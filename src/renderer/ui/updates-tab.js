@@ -10,6 +10,10 @@
 import { t, getCurrentLang } from '../i18n/i18n.js';
 import { switchTab } from './navigation.js';
 
+let allReleases = [];
+let currentHistoryPage = 1;
+const HISTORY_ITEMS_PER_PAGE = 5;
+
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
 export function initUpdatesTab() {
@@ -26,6 +30,14 @@ export function initUpdatesTab() {
 
     // Sürüm geçmişini arka planda yükle (sekme açık olmasa da)
     _loadReleaseHistory();
+
+    // Re-render release history page if language changes
+    document.addEventListener('language-changed', () => {
+        const activeTab = document.querySelector('.tab-content.active');
+        if (activeTab && activeTab.id === 'updates' && allReleases.length > 0) {
+            _renderHistoryPage(currentHistoryPage);
+        }
+    });
 }
 
 // ─── Buton Listener'ları ──────────────────────────────────────────────────────
@@ -159,6 +171,7 @@ function _setupIpcListeners() {
 
 async function _loadReleaseHistory() {
     const container = document.getElementById('release-history-list');
+    const paginationContainer = document.getElementById('updates-pagination');
     if (!container) return;
 
     // Yükleniyor göstergesi
@@ -166,11 +179,12 @@ async function _loadReleaseHistory() {
         <div style="text-align:center; padding: 20px; color: var(--text-secondary); font-size: 13px;">
             🔄 ${t('updates.historyLoading')}
         </div>`;
+    if (paginationContainer) paginationContainer.innerHTML = '';
 
     try {
-        const releases = await window.electronAPI.fetchAllReleases();
+        allReleases = await window.electronAPI.fetchAllReleases();
 
-        if (!releases || releases.length === 0) {
+        if (!allReleases || allReleases.length === 0) {
             container.innerHTML = `
                 <div style="color: var(--text-secondary); font-size: 13px; padding: 10px 0;">
                     ${t('updates.historyEmpty')}
@@ -178,33 +192,8 @@ async function _loadReleaseHistory() {
             return;
         }
 
-        container.innerHTML = releases.map((r, i) => {
-            const date = r.published_at
-                ? new Date(r.published_at).toLocaleDateString(getCurrentLang() === 'tr' ? 'tr-TR' : 'en-US', {
-                    year: 'numeric', month: 'long', day: 'numeric'
-                  })
-                : '';
-
-            const isLatest = i === 0;
-            const isPrerelease = r.prerelease;
-
-            return `
-                <div class="release-history-item ${isLatest ? 'release-latest' : ''}">
-                    <div class="release-history-header">
-                        <div style="display:flex; align-items:center; gap: 10px; flex-wrap:wrap;">
-                            <span class="release-version-tag">${_escSafe(r.tag_name)}</span>
-                             ${isLatest ? `<span class="utag utag-dlssEnabler" style="font-size:11px;" data-i18n="updates.latestBadge">${t('updates.latestBadge')}</span>` : ''}
-                            ${isPrerelease ? '<span class="utag" style="font-size:11px; background:rgba(251,191,36,0.15); color:#fbbf24; border:1px solid rgba(251,191,36,0.3);">Pre-release</span>' : ''}
-                            ${r.name && r.name !== r.tag_name ? `<span class="release-title">${_escSafe(r.name)}</span>` : ''}
-                        </div>
-                        ${date ? `<span class="release-date">${date}</span>` : ''}
-                    </div>
-                    ${r.body ? `
-                    <div class="release-notes-body">
-                        ${_markdownToHtml(r.body)}
-                    </div>` : `<p style="margin:8px 0 0; font-size:13px; color:var(--text-secondary);">${t('updates.noChangeNotes')}</p>`}
-                </div>`;
-        }).join('');
+        currentHistoryPage = 1;
+        _renderHistoryPage(currentHistoryPage);
 
     } catch (err) {
         console.error('[UpdatesTab] Release geçmişi yüklenemedi:', err);
@@ -212,6 +201,138 @@ async function _loadReleaseHistory() {
             <div style="color: var(--text-secondary); font-size: 13px; padding: 10px 0;">
                 ⚠️ ${t('updates.historyError')}
             </div>`;
+    }
+}
+
+function _renderHistoryPage(page) {
+    const container = document.getElementById('release-history-list');
+    const paginationContainer = document.getElementById('updates-pagination');
+    if (!container) return;
+
+    container.innerHTML = '';
+    if (paginationContainer) paginationContainer.innerHTML = '';
+
+    const totalItems = allReleases.length;
+    const totalPages = Math.ceil(totalItems / HISTORY_ITEMS_PER_PAGE);
+
+    if (page < 1) page = 1;
+    if (page > totalPages) page = totalPages;
+    currentHistoryPage = page;
+
+    const startIndex = (currentHistoryPage - 1) * HISTORY_ITEMS_PER_PAGE;
+    const endIndex = Math.min(startIndex + HISTORY_ITEMS_PER_PAGE, totalItems);
+    const pageItems = allReleases.slice(startIndex, endIndex);
+
+    container.innerHTML = pageItems.map((r, indexInPage) => {
+        const globalIndex = startIndex + indexInPage;
+        const date = r.published_at
+            ? new Date(r.published_at).toLocaleDateString(getCurrentLang() === 'tr' ? 'tr-TR' : 'en-US', {
+                year: 'numeric', month: 'long', day: 'numeric'
+              })
+            : '';
+
+        const isLatest = globalIndex === 0;
+        const isPrerelease = r.prerelease;
+
+        return `
+            <div class="release-history-item ${isLatest ? 'release-latest' : ''}">
+                <div class="release-history-header">
+                    <div style="display:flex; align-items:center; gap: 10px; flex-wrap:wrap;">
+                        <span class="release-version-tag">${_escSafe(r.tag_name)}</span>
+                         ${isLatest ? `<span class="utag utag-dlssEnabler" style="font-size:11px;" data-i18n="updates.latestBadge">${t('updates.latestBadge')}</span>` : ''}
+                        ${isPrerelease ? '<span class="utag" style="font-size:11px; background:rgba(251,191,36,0.15); color:#fbbf24; border:1px solid rgba(251,191,36,0.3);">Pre-release</span>' : ''}
+                        ${r.name && r.name !== r.tag_name ? `<span class="release-title">${_escSafe(r.name)}</span>` : ''}
+                    </div>
+                    ${date ? `<span class="release-date">${date}</span>` : ''}
+                </div>
+                ${r.body ? `
+                <div class="release-notes-body">
+                    ${_markdownToHtml(r.body)}
+                </div>` : `<p style="margin:8px 0 0; font-size:13px; color:var(--text-secondary);">${t('updates.noChangeNotes')}</p>`}
+            </div>`;
+    }).join('');
+
+    // Render pagination controls if we have more than 1 page
+    if (totalPages > 1 && paginationContainer) {
+        // Prev button
+        const prevBtn = document.createElement('button');
+        prevBtn.className = `pagination-btn ${currentHistoryPage === 1 ? 'disabled' : ''}`;
+        prevBtn.textContent = '◀';
+        if (currentHistoryPage > 1) {
+            prevBtn.addEventListener('click', () => {
+                _renderHistoryPage(currentHistoryPage - 1);
+                container.scrollIntoView({ behavior: 'smooth' });
+            });
+        }
+        paginationContainer.appendChild(prevBtn);
+
+        // Numbered buttons with sliding window (matches free-games.js)
+        const maxVisibleButtons = 5;
+        let startPage = Math.max(1, currentHistoryPage - Math.floor(maxVisibleButtons / 2));
+        let endPage = Math.min(totalPages, startPage + maxVisibleButtons - 1);
+
+        if (endPage - startPage + 1 < maxVisibleButtons) {
+            startPage = Math.max(1, endPage - maxVisibleButtons + 1);
+        }
+
+        if (startPage > 1) {
+            const firstBtn = document.createElement('button');
+            firstBtn.className = 'pagination-btn';
+            firstBtn.textContent = '1';
+            firstBtn.addEventListener('click', () => {
+                _renderHistoryPage(1);
+                container.scrollIntoView({ behavior: 'smooth' });
+            });
+            paginationContainer.appendChild(firstBtn);
+
+            if (startPage > 2) {
+                const dots = document.createElement('span');
+                dots.className = 'pagination-dots';
+                dots.textContent = '...';
+                paginationContainer.appendChild(dots);
+            }
+        }
+
+        for (let i = startPage; i <= endPage; i++) {
+            const pageBtn = document.createElement('button');
+            pageBtn.className = `pagination-btn ${i === currentHistoryPage ? 'active' : ''}`;
+            pageBtn.textContent = i;
+            pageBtn.addEventListener('click', () => {
+                _renderHistoryPage(i);
+                container.scrollIntoView({ behavior: 'smooth' });
+            });
+            paginationContainer.appendChild(pageBtn);
+        }
+
+        if (endPage < totalPages) {
+            if (endPage < totalPages - 1) {
+                const dots = document.createElement('span');
+                dots.className = 'pagination-dots';
+                dots.textContent = '...';
+                paginationContainer.appendChild(dots);
+            }
+
+            const lastBtn = document.createElement('button');
+            lastBtn.className = 'pagination-btn';
+            lastBtn.textContent = totalPages;
+            lastBtn.addEventListener('click', () => {
+                _renderHistoryPage(totalPages);
+                container.scrollIntoView({ behavior: 'smooth' });
+            });
+            paginationContainer.appendChild(lastBtn);
+        }
+
+        // Next button
+        const nextBtn = document.createElement('button');
+        nextBtn.className = `pagination-btn ${currentHistoryPage === totalPages ? 'disabled' : ''}`;
+        nextBtn.textContent = '▶';
+        if (currentHistoryPage < totalPages) {
+            nextBtn.addEventListener('click', () => {
+                _renderHistoryPage(currentHistoryPage + 1);
+                container.scrollIntoView({ behavior: 'smooth' });
+            });
+        }
+        paginationContainer.appendChild(nextBtn);
     }
 }
 

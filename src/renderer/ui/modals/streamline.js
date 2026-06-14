@@ -3,6 +3,7 @@ import { openModal, closeModal } from './base.js';
 import { showInfoModal } from './info.js';
 import { renderGames, updateHomeStats } from '../games.js';
 import { t } from '../../i18n/i18n.js';
+import { buildCacheStatusBar } from './cacheHelpers.js';
 
 const slVersionSelect = document.getElementById('sl-version');
 const slAutoInstallBtn = document.getElementById('sl-auto-install-btn');
@@ -21,7 +22,7 @@ const streamlineDownloadBtn = document.getElementById('streamline-download-btn')
 // Stores GitHub releases fetched when the install modal opens
 let _slGithubReleases = [];
 
-export async function openStreamlineModal() {
+export async function openStreamlineModal(forceRefresh = false) {
     if (!state.currentSelectedGame) return;
 
     slGameName.textContent = state.currentSelectedGame.name;
@@ -40,9 +41,17 @@ export async function openStreamlineModal() {
     slAutoInstallBtn.disabled = true;
     _slGithubReleases = [];
 
+    // Önceki cache status barını temizle
+    const existingBar = slVersionSelect.parentNode.querySelector('.release-cache-status-bar');
+    if (existingBar) existingBar.remove();
+
     try {
-        const releases = await window.electronAPI.getStreamlineReleases();
-        if (releases.error) throw new Error(releases.error);
+        const result = await window.electronAPI.getStreamlineReleases(forceRefresh);
+        if (result.error) throw new Error(result.error);
+
+        const releases = result.releases ?? result;
+        const fetchedAt = result.fetchedAt ?? null;
+        const fromStaleCache = result.fromStaleCache ?? false;
 
         _slGithubReleases = releases;
         slVersionSelect.innerHTML = '';
@@ -50,6 +59,10 @@ export async function openStreamlineModal() {
         if (releases.length === 0) {
             slVersionSelect.innerHTML = `<option value="" disabled>${t('streamline.noVersions')}</option>`;
         } else {
+            // Cache durum çubuğu
+            const cacheBar = buildCacheStatusBar(fetchedAt, fromStaleCache, () => openStreamlineModal(true));
+            slVersionSelect.parentNode.insertBefore(cacheBar, slVersionSelect);
+
             releases.forEach((r, idx) => {
                 const opt = document.createElement('option');
                 opt.value = idx;
@@ -95,6 +108,78 @@ export async function runStreamlineInstall(game, version, targetDir, overwriteBa
         }
     } catch(e) {
         showInfoModal(t('streamline.errorTitle'), t('streamline.unexpectedError') + e.message, true);
+    }
+}
+
+async function _loadStreamlineVersionsModal(forceRefresh = false) {
+    streamlineVersionsLoading.style.display = 'block';
+    streamlineVersionsLoading.textContent = t('streamline.standaloneLoading');
+    streamlineVersionsLoading.style.color = 'var(--text-secondary)';
+    streamlineVersionsContainer.style.display = 'none';
+    streamlineVersionSelect.innerHTML = '';
+
+    // Önceki cache status barını temizle
+    const existingBar = streamlineVersionsModal.querySelector('.release-cache-status-bar');
+    if (existingBar) existingBar.remove();
+
+    try {
+        const result = await window.electronAPI.getStreamlineReleases(forceRefresh);
+        if (result.error) throw new Error(result.error);
+
+        const releases = result.releases ?? result;
+        const fetchedAt = result.fetchedAt ?? null;
+        const fromStaleCache = result.fromStaleCache ?? false;
+
+        state.currentStreamlineReleases = releases;
+
+        // Cache durum çubuğu
+        const cacheBar = buildCacheStatusBar(fetchedAt, fromStaleCache, () => _loadStreamlineVersionsModal(true));
+        streamlineVersionsContainer.parentNode.insertBefore(cacheBar, streamlineVersionsContainer);
+
+        releases.forEach((r, index) => {
+            const opt = document.createElement('option');
+            opt.value = index;
+            if (r.installed) {
+                opt.textContent = `${r.name} - [${t('streamline.installed').replace(/[\[\]]/g,'')}]`;
+                opt.style.color = '#22c55e';
+            } else {
+                opt.textContent = `${r.name}`;
+            }
+            streamlineVersionSelect.appendChild(opt);
+        });
+
+        if (releases.length > 0) {
+            const firstRelease = releases[0];
+            if (firstRelease.installed) {
+                streamlineDownloadBtn.textContent = t('streamline.alreadyDownloaded');
+                streamlineDownloadBtn.style.backgroundColor = '#16a34a';
+            } else {
+                streamlineDownloadBtn.textContent = t('streamline.downloadBtn');
+                streamlineDownloadBtn.style.backgroundColor = '';
+            }
+        }
+
+        streamlineVersionSelect.addEventListener('change', () => {
+            const selectedIdx = streamlineVersionSelect.value;
+            if (selectedIdx !== '' && selectedIdx != null) {
+                const release = state.currentStreamlineReleases[selectedIdx];
+                if (release) {
+                    if (release.installed) {
+                        streamlineDownloadBtn.textContent = t('streamline.alreadyDownloaded');
+                        streamlineDownloadBtn.style.backgroundColor = '#16a34a';
+                    } else {
+                        streamlineDownloadBtn.textContent = t('streamline.downloadBtn');
+                        streamlineDownloadBtn.style.backgroundColor = '';
+                    }
+                }
+            }
+        });
+
+        streamlineVersionsLoading.style.display = 'none';
+        streamlineVersionsContainer.style.display = 'block';
+    } catch(e) {
+        streamlineVersionsLoading.textContent = t('streamline.standaloneLoadError') + e.message;
+        streamlineVersionsLoading.style.color = '#ef4444';
     }
 }
 
@@ -217,64 +302,7 @@ export function initStreamlineListeners() {
                 return;
             }
             openModal('streamline-versions-modal');
-            streamlineVersionsLoading.style.display = 'block';
-            streamlineVersionsLoading.textContent = t('streamline.standaloneLoading');
-            streamlineVersionsLoading.style.color = 'var(--text-secondary)';
-            streamlineVersionsContainer.style.display = 'none';
-            streamlineVersionSelect.innerHTML = '';
-            
-            try {
-                const releases = await window.electronAPI.getStreamlineReleases();
-                if (releases.error) throw new Error(releases.error);
-                
-                state.currentStreamlineReleases = releases;
-                
-                releases.forEach((r, index) => {
-                    const opt = document.createElement('option');
-                    opt.value = index;
-                    if (r.installed) {
-                        opt.textContent = `${r.name} - [${t('streamline.installed').replace(/[\[\]]/g,'')}]`;
-                        opt.style.color = '#22c55e';
-                    } else {
-                        opt.textContent = `${r.name}`;
-                    }
-                    streamlineVersionSelect.appendChild(opt);
-                });
-
-                if (releases.length > 0) {
-                    const firstRelease = releases[0];
-                    if (firstRelease.installed) {
-                        streamlineDownloadBtn.textContent = t('streamline.alreadyDownloaded');
-                        streamlineDownloadBtn.style.backgroundColor = '#16a34a';
-                    } else {
-                        streamlineDownloadBtn.textContent = t('streamline.downloadBtn');
-                        streamlineDownloadBtn.style.backgroundColor = '';
-                    }
-                }
-
-                // Sürüm değiştirildiğinde buton metnini güncelle
-                streamlineVersionSelect.addEventListener('change', () => {
-                    const selectedIdx = streamlineVersionSelect.value;
-                    if (selectedIdx !== '' && selectedIdx != null) {
-                        const release = state.currentStreamlineReleases[selectedIdx];
-                        if (release) {
-                            if (release.installed) {
-                                streamlineDownloadBtn.textContent = t('streamline.alreadyDownloaded');
-                                streamlineDownloadBtn.style.backgroundColor = '#16a34a';
-                            } else {
-                                streamlineDownloadBtn.textContent = t('streamline.downloadBtn');
-                                streamlineDownloadBtn.style.backgroundColor = '';
-                            }
-                        }
-                    }
-                });
-                
-                streamlineVersionsLoading.style.display = 'none';
-                streamlineVersionsContainer.style.display = 'block';
-            } catch(e) {
-                streamlineVersionsLoading.textContent = t('streamline.standaloneLoadError') + e.message;
-                streamlineVersionsLoading.style.color = '#ef4444';
-            }
+            await _loadStreamlineVersionsModal(false);
         });
     }
 

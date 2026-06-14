@@ -31,6 +31,10 @@ export function openModal(modalId) {
     if (modal) {
         modal.classList.add('active');
         
+        // Dynamic z-index for stacked modals
+        const activeModals = document.querySelectorAll('.modal.active');
+        modal.style.zIndex = (1000 + activeModals.length * 10).toString();
+        
         // Focus input if it's the manual add modal
         if (modalId === 'manual-add-modal') {
             const input = document.getElementById('manual-game-name-input');
@@ -47,8 +51,10 @@ export function openModal(modalId) {
 export function initBaseModals() {
     const closeModalBtns = document.querySelectorAll('.close-modal');
     closeModalBtns.forEach(btn => {
+        const target = btn.getAttribute('data-target');
+        if (target === 'settings-modal') return;
+
         btn.addEventListener('click', () => {
-            const target = btn.getAttribute('data-target');
             closeModal(target);
         });
     });

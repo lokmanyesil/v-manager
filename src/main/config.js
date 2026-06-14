@@ -32,6 +32,7 @@ function getUserGamesFile() { return path.join(app.getPath('userData'), 'user-ga
 function getCustomFoldersFile() { return path.join(app.getPath('userData'), 'custom-folders.json'); }
 function getCustomSubfoldersStateFile() { return path.join(app.getPath('userData'), 'custom-subfolders-state.json'); }
 function getModPresetsFile() { return path.join(app.getPath('userData'), 'mod-presets.json'); }
+function getSettingsFile() { return path.join(app.getPath('userData'), 'settings.json'); }
 
 const DEVELOPER_GAMES_FILE = path.join(projectRoot, 'developer-games.json');
 
@@ -502,6 +503,30 @@ function saveModPresets(mod, presets) {
     }
 }
 
+function getSettings() {
+    const filePath = getSettingsFile();
+    const defaultSettings = { resolution: '1280x720' };
+    try {
+        if (fs.existsSync(filePath)) {
+            const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+            return { ...defaultSettings, ...data };
+        }
+    } catch (e) {
+        console.error('[CONFIG] Could not read settings.json:', e.message);
+    }
+    return defaultSettings;
+}
+
+function saveSettings(settings) {
+    const filePath = getSettingsFile();
+    try {
+        atomicWriteFile(filePath, JSON.stringify(settings, null, 2));
+    } catch (e) {
+        console.error('[CONFIG] Could not write settings.json:', e.message);
+        throw e;
+    }
+}
+
 module.exports = {
     STEAMGRID_API_KEY,
     get GAMES_FILE() { return getGamesFile(); },
@@ -555,5 +580,9 @@ module.exports = {
 
     // Mod presets
     getModPresets,
-    saveModPresets
+    saveModPresets,
+
+    // App settings
+    getSettings,
+    saveSettings
 };

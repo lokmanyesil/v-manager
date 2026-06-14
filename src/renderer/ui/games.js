@@ -3,7 +3,7 @@ import { openModal, closeModal } from './modals/base.js';
 import { showConfirmModal } from './blacklist.js';
 import { openUpdateModal } from './modals/update.js';
 import { openSettingsModal } from './modals/settings.js';
-import { showInfoModal } from './modals/info.js';
+import { showInfoModal, showLauncherWarningModal } from './modals/info.js';
 import { t } from '../i18n/i18n.js';
 
 // Get elements helper to ensure they exist before use
@@ -286,28 +286,7 @@ export function renderGames(games) {
 }
 
 export async function updateHomeStats() {
-    if (!window.electronAPI) return;
-    const games = await window.electronAPI.getGames();
-
-    const dlssCount = games.filter(g => g.hasDlssEnabler).length;
-    const optiCount = games.filter(g => g.hasOptiscaler).length;
-    const totalCount = dlssCount + optiCount;
-
-    const totalEl = document.getElementById('total-mods-count');
-    if (totalEl) totalEl.textContent = totalCount;
-
-    const dlssEl = document.getElementById('dlss-enabler-count');
-    if (dlssEl) dlssEl.textContent = dlssCount;
-
-    const optiEl = document.getElementById('optiscaler-count');
-    if (optiEl) optiEl.textContent = optiCount;
-
-    // Backward compatibility support for modded-games-count
-    const oldEl = document.getElementById('modded-games-count');
-    if (oldEl) {
-        const uniqueModdedCount = games.filter(g => g.hasDlssEnabler || g.hasStreamline || g.hasOptiscaler).length;
-        oldEl.textContent = uniqueModdedCount;
-    }
+    // Stats cards have been replaced with social media links.
 }
 
 export async function initGames() {
@@ -318,11 +297,41 @@ export async function initGames() {
         let games = await window.electronAPI.getGames();
 
         if (!games || games.length === 0) {
+            state.isScanning = true;
+
+            // Disable sort dropdown
+            const sortSelectEl = document.getElementById('game-sort-select');
+            if (sortSelectEl) sortSelectEl.disabled = true;
+
             if (loading) {
                 loading.style.display = 'block';
-                loading.textContent = t('games.scanningShort');
+                loading.textContent = `${t('games.scanningShort')} (0%)`;
             }
             if (container) container.innerHTML = '';
+
+            // Reset progress modal elements
+            const progressTitle = document.getElementById('scan-progress-title');
+            if (progressTitle) progressTitle.textContent = t('games.scanTitle');
+
+            const runningArea = document.getElementById('scan-progress-running-area');
+            if (runningArea) runningArea.style.display = 'block';
+
+            const resultsArea = document.getElementById('scan-custom-results-area');
+            if (resultsArea) resultsArea.style.display = 'none';
+
+            const progressModal = document.getElementById('scan-progress-modal');
+            if (progressModal) {
+                const content = progressModal.querySelector('.modal-content');
+                if (content) content.style.maxWidth = '';
+            }
+
+            const progressBar = document.getElementById('scan-progress-bar');
+            const progressPercent = document.getElementById('scan-progress-percent');
+            const progressStatus = document.getElementById('scan-progress-status');
+            if (progressBar) progressBar.style.width = '0%';
+            if (progressPercent) progressPercent.textContent = '0%';
+            if (progressStatus) progressStatus.textContent = t('games.preparingLabel');
+
             window.electronAPI.startScan();
         } else {
             renderGames(games);
@@ -589,6 +598,11 @@ export function initGamesListeners() {
         if (progressBar) progressBar.style.width = `${percent}%`;
         if (progressPercent) progressPercent.textContent = `${percent}%`;
         if (progressStatus) progressStatus.textContent = t('games.analyzingFiles');
+
+        const loading = getLoadingEl();
+        if (loading && loading.style.display !== 'none') {
+            loading.textContent = `${t('games.scanningShort')} (${percent}%)`;
+        }
     });
 
     // Handle Sort Change
@@ -680,12 +694,14 @@ export function initGamesListeners() {
 
     // Browse button — let user pick .exe from Windows file dialog
     if (manualExeBrowseBtn) {
-        manualExeBrowseBtn.addEventListener('click', async () => {
-            const selected = await window.electronAPI.selectExe();
-            if (selected && manualExeInput) {
-                manualExeInput.value = selected;
-                if (manualExeHint) manualExeHint.style.display = 'none'; // user chose manually
-            }
+        manualExeBrowseBtn.addEventListener('click', () => {
+            showLauncherWarningModal(async () => {
+                const selected = await window.electronAPI.selectExe();
+                if (selected && manualExeInput) {
+                    manualExeInput.value = selected;
+                    if (manualExeHint) manualExeHint.style.display = 'none'; // user chose manually
+                }
+            });
         });
     }
 

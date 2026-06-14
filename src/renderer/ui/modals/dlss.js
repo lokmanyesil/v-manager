@@ -1,8 +1,9 @@
 import { state } from '../../state.js';
 import { openModal, closeModal } from './base.js';
-import { showInfoModal } from './info.js';
+import { showInfoModal, showLauncherWarningModal } from './info.js';
 import { renderGames, updateHomeStats } from '../games.js';
 import { t } from '../../i18n/i18n.js';
+import { buildCacheStatusBar } from './cacheHelpers.js';
 
 const dlssGameCover = document.getElementById('dlss-game-cover');
 const dlssGamePlaceholder = document.getElementById('dlss-game-placeholder');
@@ -17,7 +18,7 @@ const dlssConfirmNoBtn = document.getElementById('dlss-confirm-no-btn');
 
 let currentDlssReleases = [];
 
-export async function openDlssModal() {
+export async function openDlssModal(forceRefresh = false) {
     if (!state.currentSelectedGame) return;
 
     // Symmetric conflict check: if OptiScaler is already installed
@@ -37,12 +38,30 @@ export async function openDlssModal() {
         dlssGamePlaceholder.style.display = 'flex';
     }
 
+    // Önceki cache status barını temizle
+    if (dlssVersionSelect && dlssVersionSelect.parentNode) {
+        const existingBar = dlssVersionSelect.parentNode.querySelector('.release-cache-status-bar');
+        if (existingBar) existingBar.remove();
+    }
+
     // Fetch and populate DLSS versions
     try {
-        const releases = await window.electronAPI.getDlssEnablerReleases();
+        const result = await window.electronAPI.getDlssEnablerReleases(forceRefresh);
         dlssVersionSelect.innerHTML = '';
+
+        const releases = result.releases ?? result;
+        const fetchedAt = result.fetchedAt ?? null;
+        const fromStaleCache = result.fromStaleCache ?? false;
+
         if (releases && releases.length > 0) {
             currentDlssReleases = releases;
+
+            // Cache durum çubuğu— dlss-version select'in üstüne ekle
+            const cacheBar = buildCacheStatusBar(fetchedAt, fromStaleCache, async () => {
+                await openDlssModal(true);
+            });
+            dlssVersionSelect.parentNode.insertBefore(cacheBar, dlssVersionSelect);
+
             releases.forEach((r, index) => {
                 const opt = document.createElement('option');
                 opt.value = r.name;
@@ -169,15 +188,17 @@ export function initDlssListeners() {
             }
 
             try {
-                const exePath = await window.electronAPI.selectExe();
-                if (!exePath) return; // User cancelled
+                showLauncherWarningModal(async () => {
+                    const exePath = await window.electronAPI.selectExe();
+                    if (!exePath) return; // User cancelled
 
-                state.pendingExePath = exePath;
-                state.pendingVersion = version;
-                state.pendingDllName = dlssDllNameSelect ? dlssDllNameSelect.value : 'version.dll';
+                    state.pendingExePath = exePath;
+                    state.pendingVersion = version;
+                    state.pendingDllName = dlssDllNameSelect ? dlssDllNameSelect.value : 'version.dll';
 
-                closeModal('dlss-modal');
-                openModal('dlss-confirm-modal');
+                    closeModal('dlss-modal');
+                    openModal('dlss-confirm-modal');
+                });
             } catch (e) {
                 closeModal('info-modal');
                 showInfoModal(t('dlss.errorTitle'), `${t('dlss.genericError')}${e.message}`, true);

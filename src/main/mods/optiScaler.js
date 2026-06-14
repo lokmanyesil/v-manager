@@ -6,6 +6,9 @@ const { execFile } = require('child_process');
 const { path7za } = require('7zip-bin');
 
 const config = require('../config');
+const releaseCache = require('./releaseCache');
+
+const MOD_NAME = 'optiscaler';
 
 async function extractArchive(archivePath, targetDir) {
     const lower = archivePath.toLowerCase();
@@ -29,38 +32,83 @@ const optiPatcher = require('./optiPatcher');
 const fsr4Files = require('./fsr4Files');
 
 async function getOptiScalerReleases() {
+    // --- Disk cache kontrolü ---
+    if (releaseCache.isCacheValid(MOD_NAME)) {
+        console.log('[OPTISCALER] Disk cache geçerli, döndürülüyor.');
+        const cached = releaseCache.readCache(MOD_NAME);
+        return {
+            fetchedAt: cached.fetchedAt,
+            releases: cached.releases.map(r => {
+                const targetDir = path.join(config.modsPath, 'optiscaler', r.tag);
+                let installed = false;
+                if (fs.existsSync(targetDir)) {
+                    try { installed = fs.readdirSync(targetDir).length > 0; } catch (e) {}
+                }
+                return { ...r, installed };
+            })
+        };
+    }
+
     try {
         const response = await fetch('https://api.github.com/repos/optiscaler/OptiScaler/releases', {
             headers: { 'User-Agent': 'vuenxxFG' }
         });
+
+        if (response.status === 403) {
+            const rateLimitReset = response.headers.get('X-RateLimit-Reset');
+            let errorMsg = 'GitHub API limitine ulaşıldı. Lütfen daha sonra tekrar deneyin.';
+            if (rateLimitReset) {
+                const resetDate = new Date(parseInt(rateLimitReset) * 1000);
+                errorMsg += ` (Sıfırlanma zamanı: ${resetDate.toLocaleTimeString()})`;
+            }
+            throw new Error(errorMsg);
+        }
+
         if (!response.ok) throw new Error(`GitHub API HTTP error: ${response.status}`);
         const releases = await response.json();
 
-        return releases.slice(0, 10).map(r => {
-            const tag = r.tag_name;
-            const targetDir = path.join(config.modsPath, 'optiscaler', tag);
-            let installed = false;
-            if (fs.existsSync(targetDir)) {
-                try {
-                    const files = fs.readdirSync(targetDir);
-                    if (files.length > 0) {
-                        installed = true;
-                    }
-                } catch (e) { }
-            }
+        const mappedReleases = releases.slice(0, 10).map(r => ({
+            name: r.name || r.tag_name,
+            tag:  r.tag_name,
+            downloadUrl: r.assets.find(a => {
+                const nameLow = a.name.toLowerCase();
+                return nameLow.endsWith('.zip') || nameLow.endsWith('.7z');
+            })?.browser_download_url
+        }));
 
-            return {
-                name: r.name || r.tag_name,
-                tag: tag,
-                downloadUrl: r.assets.find(a => {
-                    const nameLow = a.name.toLowerCase();
-                    return nameLow.endsWith('.zip') || nameLow.endsWith('.7z');
-                })?.browser_download_url,
-                installed: installed
-            };
-        });
+        releaseCache.writeCache(MOD_NAME, mappedReleases);
+        const fetchedAt = Date.now();
+
+        return {
+            fetchedAt,
+            releases: mappedReleases.map(r => {
+                const targetDir = path.join(config.modsPath, 'optiscaler', r.tag);
+                let installed = false;
+                if (fs.existsSync(targetDir)) {
+                    try { installed = fs.readdirSync(targetDir).length > 0; } catch (e) {}
+                }
+                return { ...r, installed };
+            })
+        };
     } catch (e) {
-        console.error("Failed to fetch OptiScaler releases:", e);
+        console.error('[OPTISCALER] Fetch hatası:', e.message);
+        // Stale cache fallback
+        const stale = releaseCache.readCache(MOD_NAME);
+        if (stale) {
+            console.log('[OPTISCALER] Stale cache fallback kullanılıyor.');
+            return {
+                fetchedAt: stale.fetchedAt,
+                fromStaleCache: true,
+                releases: stale.releases.map(r => {
+                    const targetDir = path.join(config.modsPath, 'optiscaler', r.tag);
+                    let installed = false;
+                    if (fs.existsSync(targetDir)) {
+                        try { installed = fs.readdirSync(targetDir).length > 0; } catch (err) {}
+                    }
+                    return { ...r, installed };
+                })
+            };
+        }
         return { error: e.message };
     }
 }

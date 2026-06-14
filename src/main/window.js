@@ -1,10 +1,27 @@
 const { BrowserWindow } = require('electron');
 const path = require('path');
 
+const config = require('./config');
+
 function createWindow() {
+    const settings = config.getSettings();
+    let width = 1280;
+    let height = 720;
+    if (settings && settings.resolution) {
+        const parts = settings.resolution.split('x');
+        if (parts.length === 2) {
+            const w = parseInt(parts[0], 10);
+            const h = parseInt(parts[1], 10);
+            if (!isNaN(w) && !isNaN(h)) {
+                width = w;
+                height = h;
+            }
+        }
+    }
+
     const mainWindow = new BrowserWindow({
-        width: 1280,
-        height: 720,
+        width,
+        height,
         minWidth: 800,
         minHeight: 600,
         autoHideMenuBar: true,
@@ -19,6 +36,15 @@ function createWindow() {
     });
 
     mainWindow.loadFile(path.resolve(__dirname, '..', '..', 'index.html'));
+
+    mainWindow.on('close', (e) => {
+        const ipc = require('./ipc');
+        if (ipc.isCompressionRunning && ipc.isCompressionRunning()) {
+            e.preventDefault();
+            mainWindow.webContents.send('show-close-warning');
+        }
+    });
+
     return mainWindow;
 }
 

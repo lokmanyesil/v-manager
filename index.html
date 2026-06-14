@@ -14,49 +14,49 @@
 
 <body data-theme="dark">
     <div class="app-container">
+        <!-- Top Header containing Brand, Navigation, and Controls -->
+        <header class="top-header">
+            <div class="header-brand">
+                <img src="program_logo.png" alt="V-Manager Logo" class="header-logo">
+                <h3>Manager</h3>
+            </div>
+
+            <nav class="header-nav">
+                <ul class="nav-list">
+                    <li><button class="nav-item active" data-target="home" data-i18n="nav.home">Ana Sayfa</button>
+                    </li>
+                    <li><button class="nav-item" data-target="games" data-i18n="nav.games">Oyunlar</button></li>
+                    <li><button class="nav-item" data-target="modes" data-i18n="nav.mods">Modlar</button></li>
+                    <li><button class="nav-item" data-target="compress" data-i18n="nav.compress">Sıkıştır</button>
+                    </li>
+                    <li><button class="nav-item" data-target="updates"
+                            data-i18n="nav.updates">Güncellemeler</button></li>
+                    <li><button class="nav-item" data-target="videos" data-i18n="nav.videos">Videolar</button></li>
+                    <li><button class="nav-item" data-target="tools" data-i18n="nav.tools">Araçlar</button></li>
+                </ul>
+            </nav>
+
+            <div class="header-controls">
+                <!-- Ücretsiz Oyunlar Standalone Button with Badge -->
+                <div class="free-games-btn-wrapper">
+                    <button class="nav-item free-games-nav-btn" data-target="free-games"
+                        data-i18n-title="nav.freeGames">
+                        <span class="btn-icon">🎁</span>
+                        <span data-i18n="nav.freeGames">Ücretsiz Oyunlar</span>
+                    </button>
+                    <span class="free-games-badge">🎁</span>
+                </div>
+
+                <!-- Ayarlar Button -->
+                <button class="nav-item settings-nav-btn" data-target="settings-tab" data-i18n-title="nav.settings">
+                    <span class="btn-icon">⚙️</span>
+                    <span data-i18n="nav.settings">Ayarlar</span>
+                </button>
+            </div>
+        </header>
+
         <!-- Main Content -->
         <main class="main-content">
-            <!-- Top Header containing Brand, Navigation, and Controls -->
-            <header class="top-header">
-                <div class="header-brand">
-                    <img src="program_logo.png" alt="V-Manager Logo" class="header-logo">
-                    <h3>Manager</h3>
-                </div>
-
-                <nav class="header-nav">
-                    <ul class="nav-list">
-                        <li><button class="nav-item active" data-target="home" data-i18n="nav.home">Ana Sayfa</button>
-                        </li>
-                        <li><button class="nav-item" data-target="games" data-i18n="nav.games">Oyunlar</button></li>
-                        <li><button class="nav-item" data-target="modes" data-i18n="nav.mods">Modlar</button></li>
-                        <li><button class="nav-item" data-target="compress" data-i18n="nav.compress">Sıkıştır</button>
-                        </li>
-                        <li><button class="nav-item" data-target="updates"
-                                data-i18n="nav.updates">Güncellemeler</button></li>
-                        <li><button class="nav-item" data-target="videos" data-i18n="nav.videos">Videolar</button></li>
-                        <li><button class="nav-item" data-target="tools" data-i18n="nav.tools">Araçlar</button></li>
-                    </ul>
-                </nav>
-
-                <div class="header-controls">
-                    <!-- Ücretsiz Oyunlar Standalone Button with Badge -->
-                    <div class="free-games-btn-wrapper">
-                        <button class="nav-item free-games-nav-btn" data-target="free-games"
-                            data-i18n-title="nav.freeGames">
-                            <span class="btn-icon">🎁</span>
-                            <span data-i18n="nav.freeGames">Ücretsiz Oyunlar</span>
-                        </button>
-                        <span class="free-games-badge">🎁</span>
-                    </div>
-
-                    <!-- Ayarlar Button -->
-                    <button class="nav-item settings-nav-btn" data-target="settings-tab" data-i18n-title="nav.settings">
-                        <span class="btn-icon">⚙️</span>
-                        <span data-i18n="nav.settings">Ayarlar</span>
-                    </button>
-                </div>
-            </header>
-
             <div class="tab-content active" id="home">
 
                 <!-- Info & Warnings Section -->
@@ -69,9 +69,8 @@
                     <div class="info-warning-card warning-card">
                         <div class="card-icon">⚠️</div>
                         <div class="card-body">
-                            <h4 data-i18n="home.warningTitle">Anti-Cheat (Hile Koruma) Uyarısı</h4>
-                            <p data-i18n="home.warningDesc" data-i18n-html>League of Legends, CS2 gibi hile koruma
-                                sistemine sahip oyunlara bu modları kurmamanız önerilir.</p>
+                            <h4 data-i18n="home.warningTitle">Anti-Cheat Uyarısı</h4>
+                            <p data-i18n="home.warningDesc" data-i18n-html>Çevrimiçi rekabetçi oyunlarda modları <strong>kesinlikle kullanmayın</strong>, ban yiyebilirsiniz.</p>
                         </div>
                     </div>
 
@@ -79,48 +78,69 @@
                     <div class="info-warning-card info-card">
                         <div class="card-icon">💡</div>
                         <div class="card-body">
-                            <h4 data-i18n="home.supportTitle">Desteklenen Oyunlar & Gereksinimler</h4>
-                            <p data-i18n="home.supportDesc" data-i18n-html>Modların çalışması için oyunun resmi olarak
-                                Frame Generation desteği olmalıdır.</p>
+                            <h4 data-i18n="home.supportTitle">Gereksinimler</h4>
+                            <p data-i18n="home.supportDesc" data-i18n-html>Modların çalışması için oyunun resmi olarak <strong>DLSS Frame Generation</strong> desteği olmalıdır.</p>
+                        </div>
+                    </div>
+
+                    <!-- GitHub Star Card -->
+                    <div class="info-warning-card star-card">
+                        <div class="card-icon">⭐</div>
+                        <div class="card-body">
+                            <h4 data-i18n="home.starTitle">Projeyi Yıldızla</h4>
+                            <p data-i18n="home.starDesc" data-i18n-html>Projemiz hoşunuza gittiyse GitHub repomuzu yıldızlayarak destek olabilirsiniz!</p>
                         </div>
                     </div>
                 </div>
 
-                <div class="stats-container">
-                    <div class="stat-card total-mods">
-                        <div class="stat-icon-wrapper">🛠️</div>
-                        <div class="stat-info-group">
-                            <div id="total-mods-count" class="stat-value">0</div>
-                            <div class="stat-label" data-i18n="home.totalMods">Toplam Kurulu Mod</div>
+                <div class="social-links-container">
+                    <a href="#" class="social-card youtube external-link" data-url="https://www.youtube.com/@vuenxxmx">
+                        <div class="social-icon-wrapper">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M23.498 6.163a3.003 3.003 0 0 0-2.11-2.11C19.517 3.545 12 3.545 12 3.545s-7.517 0-9.388.508a3.003 3.003 0 0 0-2.11 2.11C0 8.033 0 12 0 12s0 3.967.502 5.837a3.003 3.003 0 0 0 2.11 2.11c1.871.508 9.388.508 9.388.508s7.517 0 9.388-.508a3.003 3.003 0 0 0 2.11-2.11C24 15.967 24 12 24 12s0-3.967-.502-5.837zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+                            </svg>
                         </div>
-                    </div>
-                    <div class="stat-card dlss-enabler-mods">
-                        <div class="stat-icon-wrapper">✨</div>
-                        <div class="stat-info-group">
-                            <div id="dlss-enabler-count" class="stat-value">0</div>
-                            <div class="stat-label">DLSS Enabler</div>
+                        <div class="social-info-group">
+                            <div class="social-title">YouTube</div>
+                            <div class="social-subtitle">@vuenxxmx</div>
                         </div>
-                    </div>
-                    <div class="stat-card optiscaler-mods">
-                        <div class="stat-icon-wrapper">⚙️</div>
-                        <div class="stat-info-group">
-                            <div id="optiscaler-count" class="stat-value">0</div>
-                            <div class="stat-label">OptiScaler</div>
+                    </a>
+                    <a href="#" class="social-card discord external-link" data-url="https://discord.com/invite/SnRpn3ADNF">
+                        <div class="social-icon-wrapper">
+                            <svg width="20" height="20" viewBox="0 0 127.14 96.36" fill="currentColor">
+                                <path d="M107.7,8.07A105.15,105.15,0,0,0,77.26,0a77.19,77.19,0,0,0-3.3,6.83A96.67,96.67,0,0,0,53.22,6.83,77.19,77.19,0,0,0,49.88,0,105.15,105.15,0,0,0,19.44,8.07C3.66,31.58-1.86,54.65,1,77.53A105.73,105.73,0,0,0,32,96.36a77.7,77.7,0,0,0,6.63-10.85,68.43,68.43,0,0,1-10.4-5c.87-.64,1.71-1.32,2.51-2a68.1,68.1,0,0,0,72.69,0c.8,0.7,1.64,1.37,2.51,2a68.43,68.43,0,0,1-10.4,5,77.7,77.7,0,0,0,6.63,10.85,105.73,105.73,0,0,0,31.06-18.83C129.87,50.22,123.82,27.35,107.7,8.07ZM42.45,65.69C36.18,65.69,31,60,31,53S36.18,40.36,42.45,40.36,53.83,46,53.83,53,48.72,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.24,60,73.24,53S78.41,40.36,84.69,40.36,96.07,46,96.07,53,91,65.69,84.69,65.69Z"/>
+                            </svg>
                         </div>
-                    </div>
+                        <div class="social-info-group">
+                            <div class="social-title">Discord</div>
+                            <div class="social-subtitle">discord.gg/SnRpn3ADNF</div>
+                        </div>
+                    </a>
+                    <a href="#" class="social-card github external-link" data-url="https://github.com/vuenxx/v-manager">
+                        <div class="social-icon-wrapper">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.464-1.11-1.464-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.579.688.481C19.138 20.164 22 16.418 22 12c0-5.523-4.477-10-10-10z"/>
+                            </svg>
+                        </div>
+                        <div class="social-info-group">
+                            <div class="social-title">GitHub</div>
+                            <div class="social-subtitle">github.com/vuenxx/v-manager</div>
+                        </div>
+                    </a>
                 </div>
 
-                <div class="dashboard-section-title">
-                    <h3 data-i18n="home.guideTitle">Uygulama Kullanım Rehberi</h3>
-                </div>
-
-                <div class="video-guide-wrapper">
-                    <div class="video-guide-container external-link" data-url="https://www.youtube.com/watch?v=9X-FTNxjTI4" style="cursor: pointer;">
-                        <img src="https://img.youtube.com/vi/9X-FTNxjTI4/maxresdefault.jpg" alt="V-Manager Kullanım Rehberi" class="video-guide-thumbnail">
-                        <div class="video-guide-play-btn">
-                            <span class="play-icon">▶</span>
+                <div class="guide-banner">
+                    <div class="guide-banner-left">
+                        <span class="guide-banner-icon">🎬</span>
+                        <div class="guide-banner-text">
+                            <div class="guide-banner-title" data-i18n="home.guideNoticeTitle">Uygulama Kullanım Rehberi</div>
+                            <div class="guide-banner-desc" data-i18n="home.guideNoticeDesc">V-Manager'ı nasıl kullanacağınızı öğrenmek için videolu rehberi izleyebilirsiniz.</div>
                         </div>
                     </div>
+                    <button class="guide-banner-btn external-link" data-url="https://www.youtube.com/watch?v=9X-FTNxjTI4">
+                        <span data-i18n="home.watchGuideBtn">İzle</span>
+                        <span class="btn-icon">▶</span>
+                    </button>
                 </div>
 
                 <div class="footer-notice" data-i18n="home.footerNotice" data-i18n-html>
@@ -362,6 +382,8 @@
                             🔄 Sürüm geçmişi yükleniyor...
                         </div>
                     </div>
+                    <!-- Pagination for Updates -->
+                    <div class="free-games-pagination" id="updates-pagination" style="margin-top: 20px;"></div>
                 </div>
             </div>
 
@@ -535,31 +557,46 @@
 
                 <!-- Sub-Tab 1: Uygulama Ayarları -->
                 <div class="settings-sub-tab-content active" id="settings-app">
-                    <div class="settings-section">
-                        <h3 data-i18n="settings.languageTitle">Dil / Language</h3>
-                        <p style="font-size: 14px; color: var(--text-secondary); margin-bottom: 12px;">Uygulama dilini
-                            seçin. / Select application language.</p>
+                    <div class="settings-grid">
+                        <div class="settings-section" style="margin-bottom: 0;">
+                            <h3 data-i18n="settings.languageTitle">Dil</h3>
+                            <p data-i18n="settings.languageSubtext" style="font-size: 14px; color: var(--text-secondary); margin-bottom: 12px;">Uygulama dilini seçin.</p>
 
-                        <select id="lang-select" class="lang-select-btn" title="Switch Language"
-                            style="height: 42px; padding: 0 16px; font-size: 14px; min-width: 150px;">
-                            <option value="tr" style="background: var(--card-bg); color: var(--text-primary);">TR
-                            </option>
-                            <option value="en" style="background: var(--card-bg); color: var(--text-primary);">EN
-                            </option>
-                        </select>
-                    </div>
+                            <select id="lang-select" class="lang-select-btn" title="Switch Language"
+                                style="height: 42px; padding: 0 16px; font-size: 14px; min-width: 150px;">
+                                <option value="tr" style="background: var(--card-bg); color: var(--text-primary);">TR
+                                </option>
+                                <option value="en" style="background: var(--card-bg); color: var(--text-primary);">EN
+                                </option>
+                            </select>
+                        </div>
 
-                    <div class="settings-section" style="margin-top: 25px;">
-                        <h3 data-i18n="header.changeTheme">Temayı Değiştir</h3>
-                        <p style="font-size: 14px; color: var(--text-secondary); margin-bottom: 12px;"
-                            data-i18n="settings.themeSubtext">Uygulama temasını karanlık veya aydınlık mod olarak
-                            değiştirin. / Change theme.</p>
+                        <div class="settings-section" style="margin-bottom: 0;">
+                            <h3 data-i18n="header.changeTheme">Temayı Değiştir</h3>
+                            <p style="font-size: 14px; color: var(--text-secondary); margin-bottom: 12px;"
+                                data-i18n="settings.themeSubtext">Uygulama temasını karanlık veya aydınlık mod olarak
+                                değiştirin. / Change theme.</p>
 
-                        <button id="theme-toggle" class="theme-toggle-btn" data-i18n-title="header.changeTheme"
-                            title="Temayı Değiştir"
-                            style="width: auto; padding: 10px 24px; display: inline-flex; align-items: center; gap: 8px;">
-                            <span id="theme-icon">🌙</span>
-                        </button>
+                            <button id="theme-toggle" class="theme-toggle-btn" data-i18n-title="header.changeTheme"
+                                title="Temayı Değiştir"
+                                style="width: auto; padding: 10px 24px; display: inline-flex; align-items: center; gap: 8px;">
+                                <span id="theme-icon">🌙</span>
+                            </button>
+                        </div>
+
+                        <div class="settings-section" style="margin-bottom: 0;">
+                            <h3 data-i18n="settings.resolutionTitle">Başlangıç Çözünürlüğü</h3>
+                            <p style="font-size: 14px; color: var(--text-secondary); margin-bottom: 12px;"
+                                data-i18n="settings.resolutionSubtext">Uygulamanın başlangıç pencere boyutunu ayarlayın. / Set window startup size.</p>
+
+                            <select id="resolution-select" class="lang-select-btn" title="Resolution"
+                                style="height: 42px; padding: 0 16px; font-size: 14px; min-width: 150px;">
+                                <option value="1280x720" style="background: var(--card-bg); color: var(--text-primary);">1280x720</option>
+                                <option value="1366x768" style="background: var(--card-bg); color: var(--text-primary);">1366x768</option>
+                                <option value="1600x900" style="background: var(--card-bg); color: var(--text-primary);">1600x900</option>
+                                <option value="1920x1080" style="background: var(--card-bg); color: var(--text-primary);">1920x1080</option>
+                            </select>
+                        </div>
                     </div>
                 </div>
 
@@ -625,7 +662,7 @@
                                         data-i18n="settings.labelGameName">Oyun Adı</label>
                                     <input type="text" id="ug-game-name" placeholder="Örn: Cyberpunk 2077"
                                         class="opti-select"
-                                        style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 10px; border-radius: 6px; width: 100%; box-sizing: border-box; outline: none; transition: border-color 0.2s;">
+                                        style="width: 100%; box-sizing: border-box; outline: none; transition: border-color 0.2s;">
                                 </div>
                                 <div style="display: flex; flex-direction: column; gap: 6px;">
                                     <label style="font-size: 12px; color: var(--text-secondary);"
@@ -634,7 +671,7 @@
                                     <div style="display: flex; gap: 8px;">
                                         <input type="text" id="ug-game-root" placeholder="Örn: D:\Games\Cyberpunk 2077"
                                             class="opti-select" readonly
-                                            style="background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 10px; border-radius: 6px; flex: 1; box-sizing: border-box; outline: none;">
+                                            style="flex: 1; box-sizing: border-box; outline: none;">
                                         <button id="ug-browse-root-btn" class="install-btn"
                                             data-i18n="settings.browseFolder"
                                             style="width: auto; padding: 10px 14px; font-size: 13px; border-radius: 6px; white-space: nowrap;">📁
@@ -656,7 +693,7 @@
                                         <input type="text" id="ug-exe-path"
                                             placeholder="Örn: D:\Games\Cyberpunk 2077\bin\x64\Cyberpunk2077.exe"
                                             class="opti-select"
-                                            style="flex: 1; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 10px; border-radius: 6px; box-sizing: border-box; outline: none; transition: border-color 0.2s;">
+                                            style="flex: 1; box-sizing: border-box; outline: none; transition: border-color 0.2s;">
                                         <button id="ug-browse-exe-btn" class="install-btn"
                                             data-i18n="settings.browseExe"
                                             style="width: auto; padding: 10px 14px; font-size: 13px; border-radius: 6px; white-space: nowrap;">📂
@@ -908,7 +945,7 @@
             <h3 style="margin-top: 0; color: var(--accent-color);" data-i18n="manualAdd.title">Manuel Oyun Ekle</h3>
 
             <!-- Selected folder display -->
-            <div style="margin-top: 15px; padding: 10px 14px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; font-family: monospace; font-size: 12px; color: var(--text-secondary); word-break: break-all;"
+            <div style="margin-top: 15px; padding: 10px 14px; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 8px; font-family: monospace; font-size: 12px; color: var(--text-secondary); word-break: break-all;"
                 id="manual-game-root-display">—</div>
 
             <!-- Game name -->
@@ -916,7 +953,7 @@
                 <label style="font-size: 12px; color: var(--text-secondary);" data-i18n="manualAdd.labelGameName">Oyun
                     Adı</label>
                 <input type="text" id="manual-game-name-input" class="opti-select"
-                    style="width: 100%; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 12px; box-sizing: border-box;"
+                    style="width: 100%; box-sizing: border-box;"
                     placeholder="Örn: Cyberpunk 2077">
             </div>
 
@@ -931,7 +968,7 @@
                 <div style="display: flex; gap: 8px;">
                     <input type="text" id="manual-exe-path-input" class="opti-select"
                         data-i18n-placeholder="manualAdd.exePlaceholder"
-                        style="flex: 1; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 12px; box-sizing: border-box;"
+                        style="flex: 1; box-sizing: border-box;"
                         placeholder="EXE yolu (opsiyonel — boş bırakılırsa ana klasör kullanılır)">
                     <button id="manual-exe-browse-btn" class="install-btn" data-i18n="manualAdd.browseFolderBtn"
                         style="width: auto; padding: 10px 14px; font-size: 13px; border-radius: 6px; white-space: nowrap;">📂
@@ -1114,7 +1151,7 @@
                     hatırlanır.
                 </p>
                 <div id="scan-custom-results-list"
-                    style="max-height: 200px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; background: rgba(0,0,0,0.2); margin-bottom: 20px;">
+                    style="max-height: 200px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; background: var(--bg-color); margin-bottom: 20px;">
                     <!-- JS will populate subfolders -->
                 </div>
                 <div style="display: flex; gap: 10px; justify-content: flex-end;">
@@ -1339,6 +1376,25 @@
         </div>
     </div>
 
+    <!-- Release Cache Yenileme Uyarı Modalı (tüm modlar paylaşır) -->
+    <div id="release-cache-warning-modal" class="modal">
+        <div class="modal-content" style="max-width: 460px;">
+            <span class="close-modal" data-target="release-cache-warning-modal">&times;</span>
+            <h3 style="margin-top: 0; color: var(--accent-color);" data-i18n="releaseCache.refreshWarningTitle">
+                ⚠️ Sürümleri Yenile
+            </h3>
+            <p style="font-size: 14px; line-height: 1.6; color: var(--text-secondary); margin-top: 15px;"
+                data-i18n="releaseCache.refreshWarningMsg">
+                Eğer sürümleri tekrar ve tekrar yenilerseniz, aşırı fazla istek atmanızdan dolayı bir süre bunu yapmanıza engel koyulabilir. Sürümleri yenilemek istiyor musunuz?
+            </p>
+            <div class="confirm-btn-group">
+                <button id="cache-warning-yes-btn" class="btn-confirm-yes" data-i18n="releaseCache.refreshYes"
+                    style="background-color: #22c55e;">Evet</button>
+                <button id="cache-warning-no-btn" class="btn-confirm-no" data-i18n="releaseCache.refreshNo">Hayır</button>
+            </div>
+        </div>
+    </div>
+
     <!-- DLSS Enabler Sürümler Modalı -->
     <div id="dlss-versions-modal" class="modal">
         <div class="modal-content" style="max-width: 500px;">
@@ -1403,14 +1459,14 @@
 
             <!-- Dosya bilgi alanı (sürükleme sonrası gösterilir) -->
             <div id="dlss-upload-info"
-                style="display: none; margin-top: 16px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 10px;">
+                style="display: none; margin-top: 16px; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 10px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px;">
                     <span style="color: var(--text-secondary);" data-i18n="dlss.uploadVersionLabel">Sürüm
                         Versiyonu</span>
                     <span id="dlss-upload-version-display"
                         style="font-weight: bold; color: var(--accent-color);">—</span>
-                    <input id="dlss-upload-version-input" type="text" placeholder="Örn: 4.7.2"
-                        style="display: none; background: rgba(0,0,0,0.3); border: 1px solid var(--accent-color); color: white; padding: 6px 10px; border-radius: 6px; font-size: 13px; width: 130px; text-align: center; outline: none;">
+                    <input id="dlss-upload-version-input" type="text" placeholder="Örn: 4.7.2" class="opti-select"
+                        style="display: none; width: 130px; padding: 6px 10px; text-align: center;">
                 </div>
                 <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px;">
                     <span style="color: var(--text-secondary);" data-i18n="dlss.uploadFileLabel">Dosya Adı</span>
@@ -1827,6 +1883,13 @@
         style="display: none; position: fixed; z-index: 10000; pointer-events: none;"></div>
 
     <div id="toast-container" class="toast-container"></div>
+
+    <!-- Bug Report Floating Button -->
+    <button id="bug-report-btn" class="bug-report-btn external-link" data-url="https://vuenxx.com/v-manager/bildir" data-i18n-title="bugReport.title" title="Hata Bildir">
+        <svg class="bug-icon" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M19 8h-1.81a5.985 5.985 0 0 0-1.82-1.96l.93-.93a.996.996 0 1 0-1.41-1.41l-1.48 1.48A5.94 5.94 0 0 0 12 5c-.71 0-1.39.13-2.02.35L8.5 3.87a.996.996 0 1 0-1.41 1.41l.93.93c-.76.54-1.38 1.2-1.82 1.96H4a1 1 0 0 0 0 2h1.09c-.05.33-.09.66-.09 1v1H4a1 1 0 0 0 0 2h1v1c0 .34.04.67.09 1H4a1 1 0 0 0 0 2h1.81c1.04 1.79 2.97 3 5.19 3s4.15-1.21 5.19-3H19a1 1 0 0 0 0-2h-1.09c.05-.33.09-.66.09-1v-1h1a1 1 0 0 0 0-2h-1v-1c0-.34-.04-.67-.09-1H19a1 1 0 0 0 0-2zm-6 8h-2a1 1 0 0 1 0-2h2a1 1 0 0 1 0 2zm0-4h-2a1 1 0 0 1 0-2h2a1 1 0 0 1 0 2z"/>
+        </svg>
+    </button>
 
     <script type="module" src="renderer.js"></script>
 </body>

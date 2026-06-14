@@ -1,4 +1,4 @@
-import { showInfoModal } from './modals/info.js';
+import { showInfoModal, showLauncherWarningModal } from './modals/info.js';
 import { t } from '../i18n/i18n.js';
 
 const path = window._nodePath; // Not available — we use string ops
@@ -222,12 +222,14 @@ export function initSettingsListeners() {
     // Browse for exe_path
     const browseExeBtn = document.getElementById('ug-browse-exe-btn');
     if (browseExeBtn) {
-        browseExeBtn.addEventListener('click', async () => {
-            const selected = await window.electronAPI.selectExe();
-            if (selected && exeInp) {
-                exeInp.value = selected;
-                if (exeHint) exeHint.style.display = 'none'; // user chose manually
-            }
+        browseExeBtn.addEventListener('click', () => {
+            showLauncherWarningModal(async () => {
+                const selected = await window.electronAPI.selectExe();
+                if (selected && exeInp) {
+                    exeInp.value = selected;
+                    if (exeHint) exeHint.style.display = 'none'; // user chose manually
+                }
+            });
         });
     }
 
@@ -309,6 +311,28 @@ export function initSettingsListeners() {
             renderUserGamesUI();
         }
     });
+
+    // ── Resolution Settings ──────────────────────────────────────────────────
+    const resolutionSelect = document.getElementById('resolution-select');
+    if (resolutionSelect) {
+        window.electronAPI.getSettings().then(settings => {
+            if (settings && settings.resolution) {
+                resolutionSelect.value = settings.resolution;
+            }
+        }).catch(err => {
+            console.error('Failed to load settings:', err);
+        });
+
+        resolutionSelect.addEventListener('change', async () => {
+            try {
+                const settings = await window.electronAPI.getSettings();
+                settings.resolution = resolutionSelect.value;
+                await window.electronAPI.saveSettings(settings);
+            } catch (err) {
+                console.error('Failed to save settings:', err);
+            }
+        });
+    }
 
     window.electronAPI.logToMain('initSettingsListeners: Done');
 }

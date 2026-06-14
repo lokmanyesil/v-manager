@@ -1,7 +1,7 @@
 import { initTheme } from './ui/theme.js';
 import { initNavigation } from './ui/navigation.js';
 import { initBaseModals } from './ui/modals/base.js';
-import { initInfoModal } from './ui/modals/info.js';
+import { initInfoModal, showInfoModal } from './ui/modals/info.js';
 import { initGames, initGamesListeners } from './ui/games.js';
 import { initBlacklistListeners } from './ui/blacklist.js';
 import { initSettingsListeners, renderUserGamesUI } from './ui/settings.js';
@@ -18,7 +18,8 @@ import { initDlssVersionListeners } from './ui/modals/dlssVersions.js';
 import { initVideos } from './ui/videos.js';
 import { initUpdatesTab } from './ui/updates-tab.js';
 import { initFreeGames } from './ui/free-games.js';
-import { initI18n, setLanguage, getCurrentLang, applyTranslations } from './i18n/i18n.js';
+import { initI18n, setLanguage, getCurrentLang, applyTranslations, t } from './i18n/i18n.js';
+import { initCacheWarningModal } from './ui/modals/cacheHelpers.js';
 
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -47,6 +48,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // 2. Modals Event Listeners
     initBaseModals();
     initInfoModal();
+    initCacheWarningModal();
     initDlssListeners();
     initOptiListeners();
     initOptiPatcherListeners();
@@ -65,6 +67,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     initVideos();
     initUpdatesTab();
     initFreeGames();
+
+    // Close attempt listener (during compression)
+    if (window.electronAPI && window.electronAPI.onShowCloseWarning) {
+        window.electronAPI.onShowCloseWarning(() => {
+            showInfoModal(t('compress.closeWarningTitle'), t('compress.closeWarningMessage'), true);
+        });
+    }
 
     // 4. Initial Load
     initGames();

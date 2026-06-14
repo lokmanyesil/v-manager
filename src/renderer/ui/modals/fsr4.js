@@ -1,6 +1,7 @@
 import { openModal, closeModal } from './base.js';
 import { showInfoModal } from './info.js';
 import { t } from '../../i18n/i18n.js';
+import { buildCacheStatusBar } from './cacheHelpers.js';
 
 const fsr4VersionsBtn = document.getElementById('fsr4-versions-btn');
 const fsr4VersionsModal = document.getElementById('fsr4-versions-modal');
@@ -12,6 +13,77 @@ const fsr4DownloadBtn = document.getElementById('fsr4-download-btn');
 let isDownloading = false;
 let currentReleases = [];
 
+async function _loadFsr4Releases(forceRefresh = false) {
+    fsr4VersionsLoading.style.display = 'block';
+    fsr4VersionsLoading.textContent = t('opti.standaloneLoading');
+    fsr4VersionsLoading.style.color = 'var(--text-secondary)';
+    fsr4VersionsContainer.style.display = 'none';
+    fsr4VersionSelect.innerHTML = '';
+
+    // Önceki cache status barını temizle
+    const existingBar = fsr4VersionsModal.querySelector('.release-cache-status-bar');
+    if (existingBar) existingBar.remove();
+
+    try {
+        const result = await window.electronAPI.getFsr4Releases(forceRefresh);
+        if (result.error) throw new Error(result.error);
+
+        const releases = result.releases ?? result;
+        const fetchedAt = result.fetchedAt ?? null;
+        const fromStaleCache = result.fromStaleCache ?? false;
+
+        currentReleases = releases;
+
+        // Cache durum çubuğunu ekle
+        const cacheBar = buildCacheStatusBar(fetchedAt, fromStaleCache, () => _loadFsr4Releases(true));
+        fsr4VersionsContainer.parentNode.insertBefore(cacheBar, fsr4VersionsContainer);
+
+        releases.forEach((r, index) => {
+            const opt = document.createElement('option');
+            opt.value = index;
+            if (r.installed) {
+                opt.textContent = `${r.name} - ${t('opti.installed')}`;
+                opt.style.color = '#22c55e';
+            } else {
+                opt.textContent = r.name;
+            }
+            fsr4VersionSelect.appendChild(opt);
+        });
+
+        if (releases.length > 0) {
+            if (releases[0].installed) {
+                fsr4DownloadBtn.textContent = t('opti.alreadyDownloaded');
+                fsr4DownloadBtn.style.backgroundColor = '#16a34a';
+            } else {
+                fsr4DownloadBtn.textContent = t('opti.patcherInstallBtn');
+                fsr4DownloadBtn.style.backgroundColor = '';
+            }
+        }
+
+        fsr4VersionSelect.addEventListener('change', () => {
+            const selectedIdx = fsr4VersionSelect.value;
+            if (selectedIdx !== '' && selectedIdx != null) {
+                const release = currentReleases[selectedIdx];
+                if (release) {
+                    if (release.installed) {
+                        fsr4DownloadBtn.textContent = t('opti.alreadyDownloaded');
+                        fsr4DownloadBtn.style.backgroundColor = '#16a34a';
+                    } else {
+                        fsr4DownloadBtn.textContent = t('opti.patcherInstallBtn');
+                        fsr4DownloadBtn.style.backgroundColor = '';
+                    }
+                }
+            }
+        });
+
+        fsr4VersionsLoading.style.display = 'none';
+        fsr4VersionsContainer.style.display = 'block';
+    } catch(e) {
+        fsr4VersionsLoading.textContent = t('opti.standaloneLoadError') + e.message;
+        fsr4VersionsLoading.style.color = '#ef4444';
+    }
+}
+
 export function initFsr4Listeners() {
     if (fsr4VersionsBtn) {
         fsr4VersionsBtn.addEventListener('click', async () => {
@@ -20,64 +92,7 @@ export function initFsr4Listeners() {
                 return;
             }
             openModal('fsr4-versions-modal');
-            fsr4VersionsLoading.style.display = 'block';
-            fsr4VersionsLoading.textContent = t('opti.standaloneLoading');
-            fsr4VersionsLoading.style.color = 'var(--text-secondary)';
-            fsr4VersionsContainer.style.display = 'none';
-            fsr4VersionSelect.innerHTML = '';
-            
-            try {
-                const releases = await window.electronAPI.getFsr4Releases();
-                if (releases.error) throw new Error(releases.error);
-                
-                currentReleases = releases;
-                
-                releases.forEach((r, index) => {
-                    const opt = document.createElement('option');
-                    opt.value = index;
-                    if (r.installed) {
-                        opt.textContent = `${r.name} - ${t('opti.installed')}`;
-                        opt.style.color = '#22c55e'; // Green for installed
-                    } else {
-                        opt.textContent = r.name;
-                    }
-                    fsr4VersionSelect.appendChild(opt);
-                });
-
-                // Update download button state initially based on the first selected release
-                if (releases.length > 0) {
-                    if (releases[0].installed) {
-                        fsr4DownloadBtn.textContent = t('opti.alreadyDownloaded');
-                        fsr4DownloadBtn.style.backgroundColor = '#16a34a';
-                    } else {
-                        fsr4DownloadBtn.textContent = t('opti.patcherInstallBtn');
-                        fsr4DownloadBtn.style.backgroundColor = ''; // Reset to default CSS
-                    }
-                }
-
-                // Add change listener to update download button dynamically
-                fsr4VersionSelect.addEventListener('change', () => {
-                    const selectedIdx = fsr4VersionSelect.value;
-                    if (selectedIdx !== '' && selectedIdx != null) {
-                        const release = currentReleases[selectedIdx];
-                        if (release) {
-                            if (release.installed) {
-                                fsr4DownloadBtn.textContent = t('opti.alreadyDownloaded');
-                                fsr4DownloadBtn.style.backgroundColor = '#16a34a';
-                            } else {
-                                fsr4DownloadBtn.textContent = t('opti.patcherInstallBtn');
-                                fsr4DownloadBtn.style.backgroundColor = ''; // Reset to default CSS
-                            }
-                        }
-                    }
-                });
-                
-                fsr4VersionsLoading.style.display = 'none';
-                fsr4VersionsContainer.style.display = 'block';
-            } catch(e) {
-                fsr4VersionsLoading.textContent = t('opti.standaloneLoadError') + e.message;
-                fsr4VersionsLoading.style.color = '#ef4444';
-            }
+            await _loadFsr4Releases(false);
         });
     }
 

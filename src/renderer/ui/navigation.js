@@ -56,6 +56,12 @@ export function switchTab(tabId) {
             content.classList.remove('active');
         }
     });
+
+    // Reset scroll position on tab switch to keep layout consistent
+    const mainContent = document.querySelector('.main-content');
+    if (mainContent) {
+        mainContent.scrollTop = 0;
+    }
 }
 export function switchTabToSettings() {
     switchTab('settings-tab');

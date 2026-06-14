@@ -17,8 +17,10 @@ const analyser = require('./mods/analyser');
 const steamScanner = require('./mods/steamScanner');
 const iniEditor = require('./mods/iniEditor');
 const updater = require('./updater');
+const releaseCache = require('./mods/releaseCache');
 
 let isScanning = false;
+let isCompressing = false;
 // C-06: Prevent duplicate IPC handler registration
 let ipcRegistered = false;
 
@@ -36,6 +38,30 @@ function registerIpcHandlers() {
     // Game retrieval
     ipcMain.handle('get-games', async () => {
         return config.getExistingGamesState();
+    });
+
+    ipcMain.handle('get-settings', () => {
+        return config.getSettings();
+    });
+
+    ipcMain.handle('save-settings', (event, settings) => {
+        config.saveSettings(settings);
+        // Apply resolution changes instantly
+        if (settings && settings.resolution) {
+            const parts = settings.resolution.split('x');
+            if (parts.length === 2) {
+                const w = parseInt(parts[0], 10);
+                const h = parseInt(parts[1], 10);
+                if (!isNaN(w) && !isNaN(h)) {
+                    const win = BrowserWindow.fromWebContents(event.sender);
+                    if (win) {
+                        win.setSize(w, h);
+                        win.center();
+                    }
+                }
+            }
+        }
+        return { success: true };
     });
 
     ipcMain.handle('launch-game', async (event, game) => {
@@ -237,7 +263,8 @@ function registerIpcHandlers() {
         return await dlssEnabler.installDlssFromZip(filePath, version);
     });
 
-    ipcMain.handle('get-dlss-enabler-releases', async () => {
+    ipcMain.handle('get-dlss-enabler-releases', async (event, { forceRefresh } = {}) => {
+        if (forceRefresh) releaseCache.clearCache('dlssenabler');
         return await dlssEnabler.getDlssEnablerReleases();
     });
 
@@ -320,7 +347,8 @@ function registerIpcHandlers() {
         return await streamline.restoreStreamline(gameName);
     });
 
-    ipcMain.handle('get-streamline-releases', async () => {
+    ipcMain.handle('get-streamline-releases', async (event, { forceRefresh } = {}) => {
+        if (forceRefresh) releaseCache.clearCache('streamline');
         return await streamline.getStreamlineReleases();
     });
 
@@ -329,7 +357,8 @@ function registerIpcHandlers() {
     });
 
     // OptiScaler
-    ipcMain.handle('get-optiscaler-releases', async () => {
+    ipcMain.handle('get-optiscaler-releases', async (event, { forceRefresh } = {}) => {
+        if (forceRefresh) releaseCache.clearCache('optiscaler');
         return await optiScaler.getOptiScalerReleases();
     });
 
@@ -342,7 +371,8 @@ function registerIpcHandlers() {
     });
 
     // OptiPatcher
-    ipcMain.handle('get-optipatcher-releases', async () => {
+    ipcMain.handle('get-optipatcher-releases', async (event, { forceRefresh } = {}) => {
+        if (forceRefresh) releaseCache.clearCache('optipatcher');
         return await optiPatcher.getOptiPatcherReleases();
     });
 
@@ -351,7 +381,8 @@ function registerIpcHandlers() {
     });
 
     // FSR4 Files
-    ipcMain.handle('get-fsr4-releases', async () => {
+    ipcMain.handle('get-fsr4-releases', async (event, { forceRefresh } = {}) => {
+        if (forceRefresh) releaseCache.clearCache('fsr4files');
         return await fsr4Files.getFsr4Releases();
     });
 
@@ -391,21 +422,31 @@ function registerIpcHandlers() {
 
     // Compression Core
     ipcMain.handle('run-compression', async (event, { folderPath, algorithm }) => {
-        return await compressor.compress(folderPath, algorithm, {}, (progress) => {
-            // M-18: Guard against sending to destroyed window
-            if (!event.sender.isDestroyed()) {
-                event.sender.send('compression-progress', { folderPath, progress });
-            }
-        });
+        isCompressing = true;
+        try {
+            return await compressor.compress(folderPath, algorithm, {}, (progress) => {
+                // M-18: Guard against sending to destroyed window
+                if (!event.sender.isDestroyed()) {
+                    event.sender.send('compression-progress', { folderPath, progress });
+                }
+            });
+        } finally {
+            isCompressing = false;
+        }
     });
 
     ipcMain.handle('run-uncompression', async (event, { folderPath }) => {
-        return await compressor.uncompress(folderPath, (progress) => {
-            // M-18: Guard against sending to destroyed window
-            if (!event.sender.isDestroyed()) {
-                event.sender.send('compression-progress', { folderPath, progress });
-            }
-        });
+        isCompressing = true;
+        try {
+            return await compressor.uncompress(folderPath, (progress) => {
+                // M-18: Guard against sending to destroyed window
+                if (!event.sender.isDestroyed()) {
+                    event.sender.send('compression-progress', { folderPath, progress });
+                }
+            });
+        } finally {
+            isCompressing = false;
+        }
     });
 
 
@@ -712,5 +753,6 @@ function registerIpcHandlers() {
 }
 
 module.exports = {
-    registerIpcHandlers
+    registerIpcHandlers,
+    isCompressionRunning: () => isCompressing
 };

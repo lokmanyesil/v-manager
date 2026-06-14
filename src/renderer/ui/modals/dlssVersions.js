@@ -1,6 +1,7 @@
 import { openModal, closeModal } from './base.js';
 import { showInfoModal } from './info.js';
 import { t } from '../../i18n/i18n.js';
+import { buildCacheStatusBar } from './cacheHelpers.js';
 
 // DOM elements
 const dlssVersionsBtn = document.getElementById('dlss-versions-btn');
@@ -12,6 +13,67 @@ const dlssDownloadBtn = document.getElementById('dlss-download-btn');
 let isDownloading = false;
 let currentReleases = [];
 
+async function _loadDlssReleases(forceRefresh = false) {
+    if (dlssVersionsLoading) {
+        dlssVersionsLoading.style.display = 'block';
+        dlssVersionsLoading.textContent = t('opti.standaloneLoading');
+        dlssVersionsLoading.style.color = 'var(--text-secondary)';
+    }
+    if (dlssVersionsContainer) dlssVersionsContainer.style.display = 'none';
+    if (dlssVersionSelect) dlssVersionSelect.innerHTML = '';
+    
+    // Önceki cache status barını temizle
+    const existingBar = dlssVersionsContainer?.parentNode?.querySelector('.release-cache-status-bar');
+    if (existingBar) existingBar.remove();
+    
+    try {
+        const result = await window.electronAPI.getDlssEnablerReleases(forceRefresh);
+        if (result.error) throw new Error(result.error);
+        
+        const releases = result.releases ?? result;
+        const fetchedAt = result.fetchedAt ?? null;
+        const fromStaleCache = result.fromStaleCache ?? false;
+
+        currentReleases = releases;
+        
+        // Cache durum çubuğunu ekle
+        const cacheBar = buildCacheStatusBar(fetchedAt, fromStaleCache, () => _loadDlssReleases(true));
+        dlssVersionsContainer.parentNode.insertBefore(cacheBar, dlssVersionsContainer);
+
+        if (dlssVersionSelect) {
+            releases.forEach((r, index) => {
+                const opt = document.createElement('option');
+                opt.value = index;
+                if (r.installed) {
+                    opt.textContent = `${r.name} - ${t('opti.installed')}`;
+                    opt.style.color = '#22c55e'; // Green for installed
+                } else {
+                    opt.textContent = r.name;
+                }
+                dlssVersionSelect.appendChild(opt);
+            });
+        }
+
+        if (releases.length > 0 && dlssDownloadBtn) {
+            if (releases[0].installed) {
+                dlssDownloadBtn.textContent = t('opti.alreadyDownloaded');
+                dlssDownloadBtn.style.backgroundColor = '#16a34a';
+            } else {
+                dlssDownloadBtn.textContent = t('opti.patcherInstallBtn');
+                dlssDownloadBtn.style.backgroundColor = ''; 
+            }
+        }
+        
+        if (dlssVersionsLoading) dlssVersionsLoading.style.display = 'none';
+        if (dlssVersionsContainer) dlssVersionsContainer.style.display = 'block';
+    } catch(e) {
+        if (dlssVersionsLoading) {
+            dlssVersionsLoading.textContent = (t('opti.standaloneLoadError') || 'Sürümler yüklenemedi: ') + e.message;
+            dlssVersionsLoading.style.color = '#ef4444';
+        }
+    }
+}
+
 export function initDlssVersionListeners() {
     if (dlssVersionsBtn) {
         dlssVersionsBtn.addEventListener('click', async () => {
@@ -20,68 +82,23 @@ export function initDlssVersionListeners() {
                 return;
             }
             openModal('dlss-versions-modal');
-            if (dlssVersionsLoading) {
-                dlssVersionsLoading.style.display = 'block';
-                dlssVersionsLoading.textContent = t('opti.standaloneLoading');
-                dlssVersionsLoading.style.color = 'var(--text-secondary)';
-            }
-            if (dlssVersionsContainer) dlssVersionsContainer.style.display = 'none';
-            if (dlssVersionSelect) dlssVersionSelect.innerHTML = '';
-            
-            try {
-                const releases = await window.electronAPI.getDlssEnablerReleases();
-                if (releases.error) throw new Error(releases.error);
-                
-                currentReleases = releases;
-                
-                if (dlssVersionSelect) {
-                    releases.forEach((r, index) => {
-                        const opt = document.createElement('option');
-                        opt.value = index;
-                        if (r.installed) {
-                            opt.textContent = `${r.name} - ${t('opti.installed')}`;
-                            opt.style.color = '#22c55e'; // Green for installed
-                        } else {
-                            opt.textContent = r.name;
-                        }
-                        dlssVersionSelect.appendChild(opt);
-                    });
-                }
+            await _loadDlssReleases(false);
+        });
+    }
 
-                if (releases.length > 0 && dlssDownloadBtn) {
-                    if (releases[0].installed) {
+    if (dlssVersionSelect) {
+        dlssVersionSelect.addEventListener('change', () => {
+            const selectedIdx = dlssVersionSelect.value;
+            if (selectedIdx !== '' && selectedIdx != null) {
+                const release = currentReleases[selectedIdx];
+                if (release && dlssDownloadBtn) {
+                    if (release.installed) {
                         dlssDownloadBtn.textContent = t('opti.alreadyDownloaded');
                         dlssDownloadBtn.style.backgroundColor = '#16a34a';
                     } else {
                         dlssDownloadBtn.textContent = t('opti.patcherInstallBtn');
                         dlssDownloadBtn.style.backgroundColor = ''; 
                     }
-                }
-
-                if (dlssVersionSelect) {
-                    dlssVersionSelect.addEventListener('change', () => {
-                        const selectedIdx = dlssVersionSelect.value;
-                        if (selectedIdx !== '' && selectedIdx != null) {
-                            const release = currentReleases[selectedIdx];
-                            if (release && dlssDownloadBtn) {
-                                if (release.installed) {
-                                    dlssDownloadBtn.textContent = t('opti.alreadyDownloaded');
-                                    dlssDownloadBtn.style.backgroundColor = '#16a34a';
-                                } else {
-                                    dlssDownloadBtn.textContent = t('opti.patcherInstallBtn');
-                                    dlssDownloadBtn.style.backgroundColor = ''; 
-                                }
-                            }
-                        }
-                    });
-                }
-                
-                if (dlssVersionsLoading) dlssVersionsLoading.style.display = 'none';
-                if (dlssVersionsContainer) dlssVersionsContainer.style.display = 'block';
-            } catch(e) {
-                if (dlssVersionsLoading) {
-                    dlssVersionsLoading.textContent = (t('opti.standaloneLoadError') || 'Sürümler yüklenemedi: ') + e.message;
-                    dlssVersionsLoading.style.color = '#ef4444';
                 }
             }
         });

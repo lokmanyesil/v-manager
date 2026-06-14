@@ -6,10 +6,9 @@ const { execFile } = require('child_process');
 const { path7za } = require('7zip-bin');
 
 const config = require('../config');
+const releaseCache = require('./releaseCache');
 
-let releasesCache = null;
-let cacheTime = 0;
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const MOD_NAME = 'fsr4files';
 
 async function extractArchive(archivePath, targetDir) {
     const lower = archivePath.toLowerCase();
@@ -29,22 +28,21 @@ async function extractArchive(archivePath, targetDir) {
 }
 
 async function getFsr4Releases() {
-    const now = Date.now();
-    if (releasesCache && (now - cacheTime < CACHE_TTL)) {
-        console.log("[FSR4] Returning cached releases.");
-        return releasesCache.map(r => {
-            const targetDir = path.join(config.modsPath, 'fsr4files', r.name);
-            let installed = false;
-            if (fs.existsSync(targetDir)) {
-                try {
-                    const files = fs.readdirSync(targetDir);
-                    if (files.length > 0) {
-                        installed = true;
-                    }
-                } catch (e) {}
-            }
-            return { ...r, installed };
-        });
+    // --- Disk cache kontrolü ---
+    if (releaseCache.isCacheValid(MOD_NAME)) {
+        console.log('[FSR4] Disk cache geçerli, döndürülüyor.');
+        const cached = releaseCache.readCache(MOD_NAME);
+        return {
+            fetchedAt: cached.fetchedAt,
+            releases: cached.releases.map(r => {
+                const targetDir = path.join(config.modsPath, 'fsr4files', r.name);
+                let installed = false;
+                if (fs.existsSync(targetDir)) {
+                    try { installed = fs.readdirSync(targetDir).length > 0; } catch (e) {}
+                }
+                return { ...r, installed };
+            })
+        };
     }
 
     try {
@@ -54,7 +52,7 @@ async function getFsr4Releases() {
 
         if (response.status === 403) {
             const rateLimitReset = response.headers.get('X-RateLimit-Reset');
-            let errorMsg = "GitHub API limitine ulaşıldı. Lütfen daha sonra tekrar deneyin.";
+            let errorMsg = 'GitHub API limitine ulaşıldı. Lütfen daha sonra tekrar deneyin.';
             if (rateLimitReset) {
                 const resetDate = new Date(parseInt(rateLimitReset) * 1000);
                 errorMsg += ` (Sıfırlanma zamanı: ${resetDate.toLocaleTimeString()})`;
@@ -66,7 +64,7 @@ async function getFsr4Releases() {
         const releases = await response.json();
 
         if (!Array.isArray(releases)) {
-            throw new Error("Invalid response format from GitHub API.");
+            throw new Error('Invalid response format from GitHub API.');
         }
 
         const mappedReleases = [];
@@ -76,50 +74,45 @@ async function getFsr4Releases() {
                 return nameLow.startsWith('fsr') && (nameLow.endsWith('.zip') || nameLow.endsWith('.7z'));
             });
             if (!asset) continue;
-
-            const tag = r.tag_name;
-            const name = r.name || r.tag_name;
-
             mappedReleases.push({
-                name: name,
-                tag: tag,
+                name: r.name || r.tag_name,
+                tag:  r.tag_name,
                 downloadUrl: asset.browser_download_url
             });
         }
 
-        releasesCache = mappedReleases;
-        cacheTime = now;
+        releaseCache.writeCache(MOD_NAME, mappedReleases);
+        const fetchedAt = Date.now();
 
-        return mappedReleases.map(r => {
-            const targetDir = path.join(config.modsPath, 'fsr4files', r.name);
-            let installed = false;
-            if (fs.existsSync(targetDir)) {
-                try {
-                    const files = fs.readdirSync(targetDir);
-                    if (files.length > 0) {
-                        installed = true;
-                    }
-                } catch (e) {}
-            }
-            return { ...r, installed };
-        });
-    } catch (e) {
-        console.error("Failed to fetch FSR4 releases:", e);
-        if (releasesCache) {
-            console.log("[FSR4] Fetch failed, returning stale cache as fallback.");
-            return releasesCache.map(r => {
+        return {
+            fetchedAt,
+            releases: mappedReleases.map(r => {
                 const targetDir = path.join(config.modsPath, 'fsr4files', r.name);
                 let installed = false;
                 if (fs.existsSync(targetDir)) {
-                    try {
-                        const files = fs.readdirSync(targetDir);
-                        if (files.length > 0) {
-                            installed = true;
-                        }
-                    } catch (err) {}
+                    try { installed = fs.readdirSync(targetDir).length > 0; } catch (e) {}
                 }
                 return { ...r, installed };
-            });
+            })
+        };
+    } catch (e) {
+        console.error('[FSR4] Fetch hatası:', e.message);
+        // Stale cache fallback — eski veri > hiç veri
+        const stale = releaseCache.readCache(MOD_NAME);
+        if (stale) {
+            console.log('[FSR4] Stale cache fallback kullanılıyor.');
+            return {
+                fetchedAt: stale.fetchedAt,
+                fromStaleCache: true,
+                releases: stale.releases.map(r => {
+                    const targetDir = path.join(config.modsPath, 'fsr4files', r.name);
+                    let installed = false;
+                    if (fs.existsSync(targetDir)) {
+                        try { installed = fs.readdirSync(targetDir).length > 0; } catch (err) {}
+                    }
+                    return { ...r, installed };
+                })
+            };
         }
         return { error: e.message };
     }

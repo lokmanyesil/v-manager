@@ -2,6 +2,8 @@ const { contextBridge, ipcRenderer, shell } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
     getGames: () => ipcRenderer.invoke('get-games'),
+    getSettings: () => ipcRenderer.invoke('get-settings'),
+    saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
     launchGame: (game) => ipcRenderer.invoke('launch-game', game),
     getAppVersion: () => ipcRenderer.invoke('get-app-version'),
     startScan: (scanSettings) => ipcRenderer.send('start-scan', scanSettings),
@@ -36,7 +38,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // DLSS Sürüm Yöneticisi
     dlssParseZip: (data) => ipcRenderer.invoke('dlss-parse-zip', data),
     dlssInstallFromZip: (data) => ipcRenderer.invoke('dlss-install-from-zip', data),
-    getDlssEnablerReleases: () => ipcRenderer.invoke('get-dlss-enabler-releases'),
+    getDlssEnablerReleases: (forceRefresh = false) => ipcRenderer.invoke('get-dlss-enabler-releases', { forceRefresh }),
     downloadDlssEnablerRelease: (data) => ipcRenderer.invoke('download-dlss-enabler-release', data),
     onDlssEnablerDownloadProgress: (callback) => ipcRenderer.on('dlss-enabler-download-progress', (_event, data) => callback(data)),
     removeDlssEnablerProgressListeners: () => ipcRenderer.removeAllListeners('dlss-enabler-download-progress'),
@@ -53,13 +55,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     checkStreamlineBackup: (data) => ipcRenderer.invoke('check-streamline-backup', data),
     installStreamline: (data) => ipcRenderer.invoke('install-streamline', data),
     restoreStreamline: (data) => ipcRenderer.invoke('restore-streamline', data),
-    getStreamlineReleases: () => ipcRenderer.invoke('get-streamline-releases'),
+    getStreamlineReleases: (forceRefresh = false) => ipcRenderer.invoke('get-streamline-releases', { forceRefresh }),
     downloadStreamlineRelease: (data) => ipcRenderer.invoke('download-streamline-release', data),
     onStreamlineDownloadProgress: (callback) => ipcRenderer.on('streamline-download-progress', (_event, data) => callback(data)),
     removeStreamlineProgressListeners: () => ipcRenderer.removeAllListeners('streamline-download-progress'),
 
     // OptiScaler IPCs
-    getOptiScalerReleases: () => ipcRenderer.invoke('get-optiscaler-releases'),
+    getOptiScalerReleases: (forceRefresh = false) => ipcRenderer.invoke('get-optiscaler-releases', { forceRefresh }),
     downloadOptiScalerRelease: (data) => ipcRenderer.invoke('download-optiscaler-release', data),
     onOptiscalerDownloadProgress: (callback) => ipcRenderer.on('optiscaler-download-progress', (_event, data) => callback(data)),
     // FIX 4f: Expose a cleanup function to remove accumulated progress listeners
@@ -67,13 +69,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     installOptiscaler: (data) => ipcRenderer.invoke('install-optiscaler', data),
 
     // OptiPatcher IPCs
-    getOptiPatcherReleases: () => ipcRenderer.invoke('get-optipatcher-releases'),
+    getOptiPatcherReleases: (forceRefresh = false) => ipcRenderer.invoke('get-optipatcher-releases', { forceRefresh }),
     downloadOptiPatcherRelease: (data) => ipcRenderer.invoke('download-optipatcher-release', data),
     onOptipatcherDownloadProgress: (callback) => ipcRenderer.on('optipatcher-download-progress', (_event, data) => callback(data)),
     removeOptiPatcherProgressListeners: () => ipcRenderer.removeAllListeners('optipatcher-download-progress'),
 
     // FSR4 Files IPCs
-    getFsr4Releases: () => ipcRenderer.invoke('get-fsr4-releases'),
+    getFsr4Releases: (forceRefresh = false) => ipcRenderer.invoke('get-fsr4-releases', { forceRefresh }),
     downloadFsr4Release: (data) => ipcRenderer.invoke('download-fsr4-release', data),
     onFsr4DownloadProgress: (callback) => ipcRenderer.on('fsr4-download-progress', (_event, data) => callback(data)),
     removeFsr4ProgressListeners: () => ipcRenderer.removeAllListeners('fsr4-download-progress'),
@@ -116,6 +118,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     checkForUpdatesManual: () => ipcRenderer.invoke('check-for-updates-manual'),
     startUpdateDownload: () => ipcRenderer.send('start-update-download'),
     quitAndInstall: () => ipcRenderer.send('quit-and-install'),
+    onShowCloseWarning: (cb) => { ipcRenderer.removeAllListeners('show-close-warning'); ipcRenderer.on('show-close-warning', () => cb()); },
 
     // Updater Event Listeners
     onUpdateChecking:         (cb) => ipcRenderer.on('update-checking',          ()        => cb()),

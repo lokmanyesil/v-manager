@@ -471,7 +471,8 @@ function buildPresetChip(preset, mod, isDevPreset) {
  * Preset uygula — form alanlarını kısmi olarak güncelle.
  */
 function applyPreset(preset, chipEl) {
-    // Önceki aktif chip'i normal hale getir
+    console.log('[applyPreset] Applying preset:', preset.id, preset.name || preset.nameKey);
+    // Önceki aktif chip'i normal hale getir ve yeşil border'ları temizle
     clearActivePresetHighlight();
 
     activePresetId = preset.id;
@@ -479,18 +480,45 @@ function applyPreset(preset, chipEl) {
     // Bu chip'i vurgula
     highlightChip(chipEl, true);
 
-    // Mevcut currentSettingsData'ya kısmi uygula
+    const changedFields = [];
+
+    // Mevcut currentSettingsData'ya kısmi uygula ve neyin değiştiğini tespit et
     for (const [section, keys] of Object.entries(preset.values)) {
         const matchedSec = Object.keys(currentSettingsData).find(s => s.toLowerCase() === section.toLowerCase()) || section;
         if (!currentSettingsData[matchedSec]) currentSettingsData[matchedSec] = {};
         for (const [key, val] of Object.entries(keys)) {
             const matchedKey = Object.keys(currentSettingsData[matchedSec]).find(k => k.toLowerCase() === key.toLowerCase()) || key;
+            
+            changedFields.push({ section: matchedSec, key: matchedKey });
             currentSettingsData[matchedSec][matchedKey] = val;
         }
     }
 
+    console.log('[applyPreset] Fields to highlight:', JSON.stringify(changedFields));
+
     // Form alanlarını güncelle (DOM'daki select/input'ları yenile)
     syncFormToData(currentSettingsData);
+
+    // Değişen/ön ayar kapsamındaki tüm alanların border rengini yeşil yap
+    const formWrapper = document.getElementById('settings-form-wrapper');
+    if (formWrapper) {
+        const inputs = formWrapper.querySelectorAll('[data-section][data-key]');
+        console.log('[applyPreset] Found form inputs count:', inputs.length);
+        changedFields.forEach(({ section, key }) => {
+            const el = Array.from(inputs).find(input => 
+                input.dataset.section && 
+                input.dataset.key &&
+                input.dataset.section.toLowerCase() === section.toLowerCase() &&
+                input.dataset.key.toLowerCase() === key.toLowerCase()
+            );
+            if (el) {
+                console.log(`[applyPreset] Highlighting field: ${section} -> ${key}`);
+                el.classList.add('green-border-highlight');
+            } else {
+                console.warn(`[applyPreset] Could not find form element to highlight for: ${section} -> ${key}`);
+            }
+        });
+    }
 
     // Dirty yap ama preset vurgusu kalsın
     markDirty();
@@ -501,6 +529,14 @@ function clearActivePresetHighlight() {
     if (!presetBar) return;
     const chips = presetBar.querySelectorAll('[data-preset-id]');
     chips.forEach(chip => highlightChip(chip, false));
+
+    // Yeşil border vurgularını temizle
+    const formWrapper = document.getElementById('settings-form-wrapper');
+    if (formWrapper) {
+        formWrapper.querySelectorAll('.green-border-highlight').forEach(el => {
+            el.classList.remove('green-border-highlight');
+        });
+    }
 }
 
 function highlightChip(chip, active) {
