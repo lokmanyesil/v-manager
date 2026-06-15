@@ -31,9 +31,12 @@ const scanner = require('../scanner');
 const optiPatcher = require('./optiPatcher');
 const fsr4Files = require('./fsr4Files');
 
-async function getOptiScalerReleases() {
+async function getOptiScalerReleases(forceRefresh = false) {
+    if (forceRefresh) {
+        releaseCache.clearCache(MOD_NAME);
+    }
     // --- Disk cache kontrolü ---
-    if (releaseCache.isCacheValid(MOD_NAME)) {
+    if (!forceRefresh && releaseCache.isCacheValid(MOD_NAME)) {
         console.log('[OPTISCALER] Disk cache geçerli, döndürülüyor.');
         const cached = releaseCache.readCache(MOD_NAME);
         return {

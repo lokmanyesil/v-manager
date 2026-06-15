@@ -665,9 +665,12 @@ async function installStreamline(game, version, targetDir) {
     }
 }
 
-async function getStreamlineReleases() {
+async function getStreamlineReleases(forceRefresh = false) {
+    if (forceRefresh) {
+        releaseCache.clearCache(MOD_NAME);
+    }
     // --- Disk cache kontrolü ---
-    if (releaseCache.isCacheValid(MOD_NAME)) {
+    if (!forceRefresh && releaseCache.isCacheValid(MOD_NAME)) {
         console.log('[STREAMLINE] Disk cache geçerli, döndürülüyor.');
         const cached = releaseCache.readCache(MOD_NAME);
         return {

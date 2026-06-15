@@ -554,9 +554,12 @@ async function installDlssFromZip(filePath, version) {
     }
 }
 
-async function getDlssEnablerReleases() {
+async function getDlssEnablerReleases(forceRefresh = false) {
+    if (forceRefresh) {
+        releaseCache.clearCache(MOD_NAME);
+    }
     // --- Disk cache kontrolü ---
-    if (releaseCache.isCacheValid(MOD_NAME)) {
+    if (!forceRefresh && releaseCache.isCacheValid(MOD_NAME)) {
         console.log('[DLSS ENABLER] Disk cache geçerli, döndürülüyor.');
         const cached = releaseCache.readCache(MOD_NAME);
         return {

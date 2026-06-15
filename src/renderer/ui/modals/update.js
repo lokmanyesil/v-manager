@@ -4,6 +4,7 @@ import { showInfoModal } from './info.js';
 import { renderGames, updateHomeStats } from '../games.js';
 import { runStreamlineInstall } from './streamline.js';
 import { t } from '../../i18n/i18n.js';
+import { buildCacheStatusBar } from './cacheHelpers.js';
 
 let currentDlssUpdateReleases = [];
 let _slUpdateReleases = [];
@@ -30,7 +31,7 @@ const manageRestoreOptiBtn = document.getElementById('update-restore-opti-btn');
 
 const manageNoModsSection = document.getElementById('update-no-mods-section');
 
-export async function openUpdateModal(game) {
+export async function openUpdateModal(game, forceRefreshDlss = false, forceRefreshSl = false) {
     state.currentSelectedGame = game;
     manageGameName.textContent = game.name;
     
@@ -51,24 +52,46 @@ export async function openUpdateModal(game) {
         manageDlssVersionBadge.textContent = `${t('update.version')} ${game.dlssEnablerVersion || t('update.unknown')}`;
         manageDlssSection.style.display = 'block';
         
+        const savedDlssVal = manageDlssVersionSelect ? manageDlssVersionSelect.value : null;
+
+        // Önceki cache status barını temizle
+        if (manageDlssVersionSelect && manageDlssVersionSelect.parentNode) {
+            const existingBar = manageDlssVersionSelect.parentNode.querySelector('.release-cache-status-bar');
+            if (existingBar) existingBar.remove();
+        }
+
         // Populate versions in change dropdown
         manageDlssVersionSelect.innerHTML = `<option value="" disabled selected>${t('update.loadingVersions')}</option>`;
         try {
-            const releases = await window.electronAPI.getDlssEnablerReleases();
+            const result = await window.electronAPI.getDlssEnablerReleases(forceRefreshDlss);
             manageDlssVersionSelect.innerHTML = '';
+            
+            const releases = result.releases ?? result;
+            const fetchedAt = result.fetchedAt ?? null;
+            const fromStaleCache = result.fromStaleCache ?? false;
+
             if (releases && releases.length > 0) {
                 currentDlssUpdateReleases = releases;
+                
+                // Cache durum çubuğu ekle
+                const cacheBar = buildCacheStatusBar(fetchedAt, fromStaleCache, async () => {
+                    await openUpdateModal(state.currentSelectedGame, true, false);
+                });
+                manageDlssVersionSelect.parentNode.insertBefore(cacheBar, manageDlssVersionSelect);
+
                 releases.forEach(r => {
                     const opt = document.createElement('option');
                     opt.value = r.name;
                     opt.textContent = `${r.name} ${r.installed ? t('opti.downloaded') : t('opti.toDownload')}`;
-                    if (r.name === game.dlssEnablerVersion) {
+                    if (r.name === (savedDlssVal || game.dlssEnablerVersion)) {
                         opt.selected = true;
                     }
                     manageDlssVersionSelect.appendChild(opt);
                 });
             }
-        } catch(e) {}
+        } catch(e) {
+            manageDlssVersionSelect.innerHTML = `<option value="" disabled>${t('update.loadError') || 'Hata oluştu'}</option>`;
+        }
     } else {
         manageDlssSection.style.display = 'none';
     }
@@ -79,14 +102,34 @@ export async function openUpdateModal(game) {
         manageSlVersionBadge.textContent = `${t('update.version')} ${game.streamlineVersion || t('update.unknown')}`;
         manageStreamlineSection.style.display = 'block';
 
+        const savedSlVal = manageSlVersionSelect ? manageSlVersionSelect.value : null;
+
+        // Önceki cache status barını temizle
+        if (manageSlVersionSelect && manageSlVersionSelect.parentNode) {
+            const existingBar = manageSlVersionSelect.parentNode.querySelector('.release-cache-status-bar');
+            if (existingBar) existingBar.remove();
+        }
+
         // Populate versions from GitHub Releases
         manageSlVersionSelect.innerHTML = `<option value="" disabled selected>${t('update.loadingVersions')}</option>`;
         _slUpdateReleases = [];
         try {
-            const releases = await window.electronAPI.getStreamlineReleases();
-            if (!releases.error && releases.length > 0) {
+            const result = await window.electronAPI.getStreamlineReleases(forceRefreshSl);
+            manageSlVersionSelect.innerHTML = '';
+            
+            const releases = result.releases ?? result;
+            const fetchedAt = result.fetchedAt ?? null;
+            const fromStaleCache = result.fromStaleCache ?? false;
+
+            if (releases && releases.length > 0) {
                 _slUpdateReleases = releases;
-                manageSlVersionSelect.innerHTML = '';
+
+                // Cache durum çubuğu ekle
+                const cacheBar = buildCacheStatusBar(fetchedAt, fromStaleCache, async () => {
+                    await openUpdateModal(state.currentSelectedGame, false, true);
+                });
+                manageSlVersionSelect.parentNode.insertBefore(cacheBar, manageSlVersionSelect);
+
                 releases.forEach((r, idx) => {
                     const opt = document.createElement('option');
                     opt.value = idx;
@@ -96,14 +139,27 @@ export async function openUpdateModal(game) {
                     } else {
                         opt.textContent = r.name;
                     }
-                    // Pre-select the currently installed version if tag matches
-                    if (game.streamlineVersion && r.tag === game.streamlineVersion) {
+                    
+                    // Pre-select the currently installed version or saved version
+                    let isSelected = false;
+                    if (savedSlVal !== '' && savedSlVal != null && _slUpdateReleases[savedSlVal]) {
+                        const prevRelease = _slUpdateReleases[savedSlVal];
+                        if (prevRelease && prevRelease.tag === r.tag) {
+                            isSelected = true;
+                        }
+                    } else if (game.streamlineVersion && r.tag === game.streamlineVersion) {
+                        isSelected = true;
+                    }
+
+                    if (isSelected) {
                         opt.selected = true;
                     }
                     manageSlVersionSelect.appendChild(opt);
                 });
             }
-        } catch(e) {}
+        } catch(e) {
+            manageSlVersionSelect.innerHTML = `<option value="" disabled>${t('update.loadError') || 'Hata oluştu'}</option>`;
+        }
     } else {
         manageStreamlineSection.style.display = 'none';
     }

@@ -264,8 +264,7 @@ function registerIpcHandlers() {
     });
 
     ipcMain.handle('get-dlss-enabler-releases', async (event, { forceRefresh } = {}) => {
-        if (forceRefresh) releaseCache.clearCache('dlssenabler');
-        return await dlssEnabler.getDlssEnablerReleases();
+        return await dlssEnabler.getDlssEnablerReleases(forceRefresh);
     });
 
     ipcMain.handle('download-dlss-enabler-release', async (event, { name, downloadUrl }) => {
@@ -348,8 +347,7 @@ function registerIpcHandlers() {
     });
 
     ipcMain.handle('get-streamline-releases', async (event, { forceRefresh } = {}) => {
-        if (forceRefresh) releaseCache.clearCache('streamline');
-        return await streamline.getStreamlineReleases();
+        return await streamline.getStreamlineReleases(forceRefresh);
     });
 
     ipcMain.handle('download-streamline-release', async (event, { tag, downloadUrl }) => {
@@ -358,8 +356,7 @@ function registerIpcHandlers() {
 
     // OptiScaler
     ipcMain.handle('get-optiscaler-releases', async (event, { forceRefresh } = {}) => {
-        if (forceRefresh) releaseCache.clearCache('optiscaler');
-        return await optiScaler.getOptiScalerReleases();
+        return await optiScaler.getOptiScalerReleases(forceRefresh);
     });
 
     ipcMain.handle('download-optiscaler-release', async (event, { tag, downloadUrl }) => {
