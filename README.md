@@ -27,6 +27,9 @@ is strictly prohibited.
 
 [🇹🇷 Türkçe](#-türkçe) | [🇬🇧 English](#-english)
 
+<img width="1577" height="855" alt="photo" src="https://github.com/user-attachments/assets/c743f9f9-471f-456a-a5b8-65a5632453b9" />
+
+
 ---
 
 ## 🇹🇷 Türkçe
