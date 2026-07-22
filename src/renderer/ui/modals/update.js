@@ -29,6 +29,10 @@ const manageOptiSection = document.getElementById('update-opti-section');
 const manageOptiVersionBadge = document.getElementById('update-opti-version-badge');
 const manageRestoreOptiBtn = document.getElementById('update-restore-opti-btn');
 
+const manageOptiBuilderSection = document.getElementById('update-optibuilder-section');
+const manageOptiBuilderVersionBadge = document.getElementById('update-optibuilder-version-badge');
+const manageRestoreOptiBuilderBtn = document.getElementById('update-restore-optibuilder-btn');
+
 const manageNoModsSection = document.getElementById('update-no-mods-section');
 
 export async function openUpdateModal(game, forceRefreshDlss = false, forceRefreshSl = false) {
@@ -55,8 +59,8 @@ export async function openUpdateModal(game, forceRefreshDlss = false, forceRefre
         const savedDlssVal = manageDlssVersionSelect ? manageDlssVersionSelect.value : null;
 
         // Önceki cache status barını temizle
-        if (manageDlssVersionSelect && manageDlssVersionSelect.parentNode) {
-            const existingBar = manageDlssVersionSelect.parentNode.querySelector('.release-cache-status-bar');
+        if (manageDlssVersionSelect && manageDlssVersionSelect.parentNode && manageDlssVersionSelect.parentNode.parentNode) {
+            const existingBar = manageDlssVersionSelect.parentNode.parentNode.querySelector('.release-cache-status-bar');
             if (existingBar) existingBar.remove();
         }
 
@@ -73,11 +77,12 @@ export async function openUpdateModal(game, forceRefreshDlss = false, forceRefre
             if (releases && releases.length > 0) {
                 currentDlssUpdateReleases = releases;
                 
-                // Cache durum çubuğu ekle
+                // Cache durum çubuğu ekle — label ile select-row arasına
                 const cacheBar = buildCacheStatusBar(fetchedAt, fromStaleCache, async () => {
                     await openUpdateModal(state.currentSelectedGame, true, false);
                 });
-                manageDlssVersionSelect.parentNode.insertBefore(cacheBar, manageDlssVersionSelect);
+                const selectRow = manageDlssVersionSelect.parentNode;
+                selectRow.parentNode.insertBefore(cacheBar, selectRow);
 
                 releases.forEach(r => {
                     const opt = document.createElement('option');
@@ -105,8 +110,8 @@ export async function openUpdateModal(game, forceRefreshDlss = false, forceRefre
         const savedSlVal = manageSlVersionSelect ? manageSlVersionSelect.value : null;
 
         // Önceki cache status barını temizle
-        if (manageSlVersionSelect && manageSlVersionSelect.parentNode) {
-            const existingBar = manageSlVersionSelect.parentNode.querySelector('.release-cache-status-bar');
+        if (manageSlVersionSelect && manageSlVersionSelect.parentNode && manageSlVersionSelect.parentNode.parentNode) {
+            const existingBar = manageSlVersionSelect.parentNode.parentNode.querySelector('.release-cache-status-bar');
             if (existingBar) existingBar.remove();
         }
 
@@ -124,11 +129,12 @@ export async function openUpdateModal(game, forceRefreshDlss = false, forceRefre
             if (releases && releases.length > 0) {
                 _slUpdateReleases = releases;
 
-                // Cache durum çubuğu ekle
+                // Cache durum çubuğu ekle — label ile select-row arasına
                 const cacheBar = buildCacheStatusBar(fetchedAt, fromStaleCache, async () => {
                     await openUpdateModal(state.currentSelectedGame, false, true);
                 });
-                manageSlVersionSelect.parentNode.insertBefore(cacheBar, manageSlVersionSelect);
+                const selectRowSl = manageSlVersionSelect.parentNode;
+                selectRowSl.parentNode.insertBefore(cacheBar, selectRowSl);
 
                 releases.forEach((r, idx) => {
                     const opt = document.createElement('option');
@@ -171,6 +177,14 @@ export async function openUpdateModal(game, forceRefreshDlss = false, forceRefre
         manageOptiSection.style.display = 'block';
     } else {
         manageOptiSection.style.display = 'none';
+    }
+
+    if (game.hasOptiBuilder) {
+        hasActiveMod = true;
+        manageOptiBuilderVersionBadge.textContent = `${t('update.version')} ${game.optiBuilderVersion || t('update.unknown')}`;
+        manageOptiBuilderSection.style.display = 'block';
+    } else {
+        manageOptiBuilderSection.style.display = 'none';
     }
     
     // Handle empty state
@@ -472,6 +486,10 @@ export function initUpdateListeners() {
                 if (result.success) {
                     showInfoModal(t('update.successTitle'), t('update.removeOptiSuccess'));
                     if (result.games) {
+                        const updatedGame = result.games.find(g => g.name === state.currentSelectedGame.name);
+                        if (updatedGame) {
+                            state.currentSelectedGame = updatedGame;
+                        }
                         renderGames(result.games);
                         updateHomeStats();
                     }
@@ -481,6 +499,41 @@ export function initUpdateListeners() {
             } catch (e) {
                 closeModal('info-modal');
                 showInfoModal(t('update.errorTitle'), t('update.removeOptiUnexpected') + e.message, true);
+            }
+        });
+    }
+
+    // Restore OptiBuilder
+    if (manageRestoreOptiBuilderBtn) {
+        manageRestoreOptiBuilderBtn.addEventListener('click', async () => {
+            closeModal('update-modal');
+            showInfoModal(t('update.removeOptiBuilderTitle'), t('update.removeOptiBuilderMsg'));
+            
+            try {
+                const result = await window.electronAPI.uninstallMod({
+                    gameName: state.currentSelectedGame.name,
+                    exePath: state.currentSelectedGame.exePath,
+                    mod: 'OptiBuilder'
+                });
+                
+                closeModal('info-modal');
+                
+                if (result.success) {
+                    showInfoModal(t('update.successTitle'), t('update.removeOptiBuilderSuccess'));
+                    if (result.games) {
+                        const updatedGame = result.games.find(g => g.name === state.currentSelectedGame.name);
+                        if (updatedGame) {
+                            state.currentSelectedGame = updatedGame;
+                        }
+                        renderGames(result.games);
+                        updateHomeStats();
+                    }
+                } else {
+                    showInfoModal(t('update.errorTitle'), t('update.removeOptiBuilderError') + result.error, true);
+                }
+            } catch (e) {
+                closeModal('info-modal');
+                showInfoModal(t('update.errorTitle'), t('update.removeOptiBuilderUnexpected') + e.message, true);
             }
         });
     }

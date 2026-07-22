@@ -38,15 +38,108 @@ function toggleProcessing(processing) {
     }
 }
 
+// ──────────────────────────────────────────────────────────────
+// Themed confirm/alert modal (respects dark/light theme)
+// ──────────────────────────────────────────────────────────────
+
+/**
+ * Temalı onay kutusu gösterir.
+ * @param {string} title
+ * @param {string} message
+ * @param {{ ok: string, cancel?: string, danger?: boolean }} opts
+ * @returns {Promise<boolean>}  true → OK/Evet, false → iptal
+ */
+function showThemedConfirm(title, message, opts = {}) {
+    return new Promise(resolve => {
+        const overlay = document.createElement('div');
+        overlay.className = 'themed-confirm-overlay';
+
+        const okLabel = opts.ok || t('compress.historyDeleteConfirmYes');
+        const cancelLabel = opts.cancel || t('compress.historyDeleteConfirmNo');
+        const isDanger = opts.danger !== false; // default danger=true for delete
+
+        overlay.innerHTML = `
+            <div class="themed-confirm-box">
+                <h3>${title}</h3>
+                <p>${message}</p>
+                <div class="themed-confirm-actions">
+                    <button class="themed-confirm-btn cancel" id="tcb-cancel">${cancelLabel}</button>
+                    <button class="themed-confirm-btn ${isDanger ? 'confirm-danger' : 'confirm-ok'}" id="tcb-ok">${okLabel}</button>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(overlay);
+
+        const cleanup = (result) => {
+            overlay.remove();
+            resolve(result);
+        };
+
+        overlay.querySelector('#tcb-ok').addEventListener('click', () => cleanup(true));
+        overlay.querySelector('#tcb-cancel').addEventListener('click', () => cleanup(false));
+        // Overlay click → cancel
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) cleanup(false); });
+    });
+}
+
+/**
+ * Temalı bilgi mesajı gösterir (tek Tamam butonu).
+ */
+function showThemedAlert(title, message) {
+    return new Promise(resolve => {
+        const overlay = document.createElement('div');
+        overlay.className = 'themed-confirm-overlay';
+        overlay.innerHTML = `
+            <div class="themed-confirm-box">
+                <h3>${title}</h3>
+                <p>${message}</p>
+                <div class="themed-confirm-actions">
+                    <button class="themed-confirm-btn confirm-ok" id="tcb-alert-ok">Tamam</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+        const cleanup = () => { overlay.remove(); resolve(); };
+        overlay.querySelector('#tcb-alert-ok').addEventListener('click', cleanup);
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) cleanup(); });
+    });
+}
+
+// ──────────────────────────────────────────────────────────────
+// Paths
+// ──────────────────────────────────────────────────────────────
+
+function normalizePath(p) {
+    return (p || '').replace(/\\/g, '/').toLowerCase().trim();
+}
+
 export async function initCompress() {
     // C-02: Remove any accumulated progress listeners before adding new ones
     window.electronAPI.removeCompressionProgressListeners();
+
+    // ── Sub-tab navigation ──────────────────────────────────────
+    const subNavBtns = document.querySelectorAll('.compress-sub-nav-btn');
+    subNavBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const targetId = btn.getAttribute('data-compress-sub-target');
+            subNavBtns.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            document.querySelectorAll('.sub-tab-content').forEach(tab => {
+                tab.classList.toggle('active', tab.id === targetId);
+            });
+            if (targetId === 'compress-history') {
+                renderHistoryTab();
+            }
+        });
+    });
 
     // 1. Core Elements
     const selectFolderBtn = document.getElementById('select-folder-btn');
     const compressSelectedBtn = document.getElementById('compress-selected-btn');
     const uncompressSelectedBtn = document.getElementById('uncompress-selected-btn');
     const addedFoldersList = document.getElementById('added-folders-list');
+
 
     // Progress Listener
     window.electronAPI.onCompressionProgress((data) => {
@@ -86,21 +179,22 @@ export async function initCompress() {
             if (isProcessing) return;
             const folderPath = await window.electronAPI.selectFolder();
             if (folderPath) {
+                // ── Duplicate klasör kontrolü ──────────────────────────────
+                const isDuplicate = addedFolders.some(
+                    f => normalizePath(f.path) === normalizePath(folderPath)
+                );
+                if (isDuplicate) {
+                    await showThemedAlert(
+                        t('compress.duplicateFolderTitle'),
+                        t('compress.duplicateFolderMsg')
+                    );
+                    return;
+                }
                 addFolderToList(folderPath);
             }
         });
     }
 
-    if (addedFoldersList) {
-        addedFoldersList.addEventListener('click', (e) => {
-            if (isProcessing) return;
-            const item = e.target.closest('.folder-item');
-            if (item) {
-                const index = parseInt(item.getAttribute('data-index'));
-                selectFolder(index);
-            }
-        });
-    }
 
     // 4. Execution
     if (compressSelectedBtn) {
@@ -162,51 +256,7 @@ export async function initCompress() {
         uncompressSelectedBtn.addEventListener('click', async () => {
             if (selectedFolderIndex === -1 || isProcessing) return;
             const folder = addedFolders[selectedFolderIndex];
-
-            // Uncompress: no percent display needed (user request)
-            // Set compTotal=0 so the progress listener won't update the bar
-            compCount = 0;
-            compTotal = 0;
-            
-            toggleProcessing(true);
-            
-            const statsSection = document.getElementById('compression-stats-section');
-            const progressContainer = document.getElementById('realtime-progress-container');
-            const methodSection = document.getElementById('compression-method-section');
-            const actualStatsContainer = document.getElementById('compression-actual-stats');
-            const realtimeProgressBarContainer = progressContainer ? progressContainer.querySelector('.comp-progress-container') : null;
-            const progressText = document.getElementById('realtime-progress-text');
-            const statusText = document.getElementById('realtime-status-text');
-
-            statsSection.style.display = 'flex';
-            progressContainer.style.display = 'block';
-            methodSection.style.display = 'none';
-            if (actualStatsContainer) actualStatsContainer.style.display = 'none';
-
-            // Hide the percent text and bar, just show processing status
-            if (realtimeProgressBarContainer) realtimeProgressBarContainer.style.display = 'none';
-            if (progressText) progressText.style.display = 'none';
-            if (statusText) statusText.textContent = t('compress.processing');
-
-            try {
-                const result = await window.electronAPI.runUncompression({ folderPath: folder.path });
-                if (result.success) {
-                    if (statusText) statusText.textContent = t('compress.completed');
-                    showInfoModal(t('opti.successTitle'), t('compress.uncompressDone'));
-                }
-            } catch (e) {
-                const msg = translateErrorCode(e.message);
-                showInfoModal(t('opti.errorTitle'), t('compress.genericError') + msg, true);
-            } finally {
-                toggleProcessing(false);
-                // Restore bar/text visibility for next compress operation
-                if (realtimeProgressBarContainer) realtimeProgressBarContainer.style.display = '';
-                if (progressText) progressText.style.display = '';
-                const progressContainerFinal = document.getElementById('realtime-progress-container');
-                if (progressContainerFinal) progressContainerFinal.style.display = 'none';
-                
-                await refreshFolderState(folder);
-            }
+            await _runUncompressForFolder(folder);
         });
     }
 
@@ -221,6 +271,58 @@ export async function initCompress() {
             }
         });
     });
+}
+
+// ──────────────────────────────────────────────────────────────
+// Shared uncompress runner (used by button AND history delete)
+// ──────────────────────────────────────────────────────────────
+
+async function _runUncompressForFolder(folder) {
+    // Uncompress: no percent display needed (user request)
+    // Set compTotal=0 so the progress listener won't update the bar
+    compCount = 0;
+    compTotal = 0;
+    
+    toggleProcessing(true);
+    
+    const statsSection = document.getElementById('compression-stats-section');
+    const progressContainer = document.getElementById('realtime-progress-container');
+    const methodSection = document.getElementById('compression-method-section');
+    const actualStatsContainer = document.getElementById('compression-actual-stats');
+    const realtimeProgressBarContainer = progressContainer ? progressContainer.querySelector('.comp-progress-container') : null;
+    const progressText = document.getElementById('realtime-progress-text');
+    const statusText = document.getElementById('realtime-status-text');
+
+    statsSection.style.display = 'flex';
+    progressContainer.style.display = 'block';
+    methodSection.style.display = 'none';
+    if (actualStatsContainer) actualStatsContainer.style.display = 'none';
+
+    // Hide the percent text and bar, just show processing status
+    if (realtimeProgressBarContainer) realtimeProgressBarContainer.style.display = 'none';
+    if (progressText) progressText.style.display = 'none';
+    if (statusText) statusText.textContent = t('compress.processing');
+
+    try {
+        const result = await window.electronAPI.runUncompression({ folderPath: folder.path });
+        if (result.success) {
+            if (statusText) statusText.textContent = t('compress.completed');
+        }
+        return result;
+    } catch (e) {
+        const msg = translateErrorCode(e.message);
+        showInfoModal(t('opti.errorTitle'), t('compress.genericError') + msg, true);
+        throw e;
+    } finally {
+        toggleProcessing(false);
+        // Restore bar/text visibility for next compress operation
+        if (realtimeProgressBarContainer) realtimeProgressBarContainer.style.display = '';
+        if (progressText) progressText.style.display = '';
+        const progressContainerFinal = document.getElementById('realtime-progress-container');
+        if (progressContainerFinal) progressContainerFinal.style.display = 'none';
+        
+        await refreshFolderState(folder);
+    }
 }
 
 // H-11: Translate error codes from main process to localized messages
@@ -251,6 +353,30 @@ async function addFolderToList(path) {
     document.querySelector('.compress-action-group').style.display = 'flex';
 
     await refreshFolderState(newFolder);
+}
+
+/**
+ * Geçmişte bu path ile eşleşen kayıtları siler ve history tab'ı günceller.
+ * @param {string} folderPath
+ */
+async function _removeHistoryMatchForPath(folderPath) {
+    try {
+        const history = await window.electronAPI.getCompressionHistory();
+        const norm = normalizePath(folderPath);
+        const matching = history.filter(e => normalizePath(e.folderPath) === norm);
+        for (const entry of matching) {
+            await window.electronAPI.removeHistoryEntry(entry.id);
+        }
+        if (matching.length > 0) {
+            // Eğer history tab aktifse yenile
+            const historyTab = document.getElementById('compress-history');
+            if (historyTab && historyTab.classList.contains('active')) {
+                renderHistoryTab();
+            }
+        }
+    } catch (e) {
+        console.warn('[Compress] _removeHistoryMatchForPath error:', e);
+    }
 }
 
 async function refreshFolderState(folder) {
@@ -302,7 +428,7 @@ function renderFolderList() {
         const item = document.createElement('div');
         item.className = `folder-item ${index === selectedFolderIndex ? 'active' : ''}`;
         item.setAttribute('data-index', index);
-        
+
         // H-10: Use textContent for user-controlled values (XSS prevention)
         const nameSpan = document.createElement('span');
         nameSpan.className = 'folder-item-name';
@@ -313,20 +439,77 @@ function renderFolderList() {
         pathSpan.textContent = folder.path;
 
         if (folder.isAnalyzing) {
+            // Analiz spinner — kaldırma yok
             const spinner = document.createElement('span');
             spinner.className = 'loading-spinner-small';
             item.appendChild(spinner);
-        } else if (folder.isCompressed) {
-            const checkmark = document.createElement('span');
-            checkmark.style.cssText = 'color:var(--accent-color); float:right;';
-            checkmark.textContent = '✓';
-            item.appendChild(checkmark);
+        } else {
+            // ✓ / ✕ toggle butonu
+            const removeBtn = document.createElement('button');
+            removeBtn.className = 'folder-item-remove-btn';
+            removeBtn.setAttribute('aria-label', 'Remove folder');
+            removeBtn.setAttribute('title', 'Listeden kaldır');
+            // Normal: ✓ (sıkıştırılmış ise yeşil, değilse gizli)
+            // Hover: her zaman ✕ kırmızı
+            const checkIcon = document.createElement('span');
+            checkIcon.className = 'folder-remove-check';
+            checkIcon.textContent = '✓';
+            checkIcon.style.color = folder.isCompressed ? 'var(--accent-color)' : 'transparent';
+
+            const closeIcon = document.createElement('span');
+            closeIcon.className = 'folder-remove-close';
+            closeIcon.textContent = '✕';
+
+            removeBtn.appendChild(checkIcon);
+            removeBtn.appendChild(closeIcon);
+
+            removeBtn.addEventListener('click', (e) => {
+                e.stopPropagation(); // klasör seçme olayını tetikleme
+                if (isProcessing) return;
+                _removeFolderFromList(index);
+            });
+
+            item.appendChild(removeBtn);
         }
 
         item.appendChild(nameSpan);
         item.appendChild(pathSpan);
+
+        // Klasör seçme — remove butonuna tıklama hariç
+        item.addEventListener('click', (e) => {
+            if (isProcessing) return;
+            if (!e.target.closest('.folder-item-remove-btn')) {
+                selectFolder(index);
+            }
+        });
+
         listContainer.appendChild(item);
     });
+}
+
+/**
+ * Klasörü addedFolders listesinden kaldırır, UI'yi günceller.
+ */
+function _removeFolderFromList(index) {
+    addedFolders.splice(index, 1);
+
+    // selectedFolderIndex'i güncelle
+    if (addedFolders.length === 0) {
+        selectedFolderIndex = -1;
+        const detailView = document.getElementById('folder-details-view');
+        if (detailView) detailView.style.display = 'none';
+        const actionGroup = document.querySelector('.compress-action-group');
+        if (actionGroup) actionGroup.style.display = 'none';
+    } else if (selectedFolderIndex >= addedFolders.length) {
+        selectedFolderIndex = addedFolders.length - 1;
+        selectFolder(selectedFolderIndex);
+    } else if (selectedFolderIndex === index) {
+        selectFolder(selectedFolderIndex);
+    } else if (selectedFolderIndex > index) {
+        selectedFolderIndex--;
+    }
+
+    renderFolderList();
 }
 
 function selectFolder(index) {
@@ -444,5 +627,222 @@ function updateMethodUI(selectedMethod, folder = null) {
         else if (method === 'XPRESS8K') infoEl.textContent = t('compress.x8kInfo');
         else if (method === 'XPRESS16K') infoEl.textContent = t('compress.x16kInfo');
         else if (method === 'LZX') infoEl.textContent = t('compress.lzxInfo');
+    });
+}
+
+// ──────────────────────────────────────────────────────────────
+// HISTORY TAB
+// ──────────────────────────────────────────────────────────────
+
+async function renderHistoryTab() {
+    const listEl = document.getElementById('compression-history-list');
+    const emptyEl = document.getElementById('compression-history-empty');
+    if (!listEl) return;
+
+    listEl.innerHTML = '';
+
+    let history = [];
+    try {
+        history = await window.electronAPI.getCompressionHistory();
+    } catch (e) {
+        console.error('[Compress] History fetch error:', e);
+    }
+
+    const hasEntries = history.length > 0;
+
+    // Boş durum — .visible class ile kontrol
+    if (emptyEl) {
+        emptyEl.classList.toggle('visible', !hasEntries);
+    }
+    listEl.style.display = hasEntries ? '' : 'none';
+
+    const lang = document.documentElement.lang || 'en';
+
+    history.forEach(entry => {
+        const card = document.createElement('div');
+        card.className = 'history-card';
+        card.setAttribute('data-history-id', entry.id);
+
+        // ── Üst satır: klasör adı + path + çöp kutusu ──────────
+        const header = document.createElement('div');
+        header.className = 'history-card-header';
+
+        const titleBlock = document.createElement('div');
+        titleBlock.className = 'history-card-title';
+
+        const nameEl = document.createElement('span');
+        nameEl.className = 'history-card-folder-name';
+        nameEl.textContent = entry.folderName || entry.folderPath.split(/[\\\/]/).pop() || '';
+
+        const pathEl = document.createElement('span');
+        pathEl.className = 'history-card-folder-path';
+        pathEl.textContent = entry.folderPath || '';
+
+        titleBlock.appendChild(nameEl);
+        titleBlock.appendChild(pathEl);
+
+        // Çöp kutusu butonu — sağ üst
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'history-delete-btn';
+        deleteBtn.title = t('compress.historyDeleteBtn');
+        deleteBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>`;
+        deleteBtn.addEventListener('click', () => _handleHistoryDelete(entry));
+
+        header.appendChild(titleBlock);
+        header.appendChild(deleteBtn);
+
+        // ── Alt istatistik grid'i ───────────────────────────────
+        const stats = document.createElement('div');
+        stats.className = 'history-card-stats';
+
+        // Önce
+        const statBefore = _makeStatItem(t('compress.historyBefore'), formatBytes(entry.sizeBefore), 'value-muted');
+        // Sonra
+        const statAfter = _makeStatItem(t('compress.historyAfter'), formatBytes(entry.sizeAfter), 'value-accent');
+        // Kazanım
+        let savedText = '—';
+        let savedClass = 'value-muted';
+        if (entry.savedPercent > 0) {
+            savedText = lang === 'tr' ? `%${entry.savedPercent}` : `${entry.savedPercent}%`;
+            savedClass = 'value-accent';
+        }
+        const statSaved = _makeStatItem(t('compress.historySavedLabel'), savedText, savedClass);
+
+        // Algoritma
+        const algoEl = document.createElement('div');
+        algoEl.className = 'history-stat-item';
+        const algoLabel = document.createElement('span');
+        algoLabel.className = 'history-stat-label';
+        algoLabel.textContent = t('compress.historyAlgorithm');
+        const algoBadge = document.createElement('span');
+        algoBadge.className = 'history-algo-badge';
+        if (entry.algorithm && entry.algorithm !== 'None' && entry.algorithm !== 'null') {
+            algoBadge.textContent = entry.algorithm;
+        } else {
+            algoBadge.textContent = '—';
+            algoBadge.classList.add('algo-none');
+        }
+        algoEl.appendChild(algoLabel);
+        algoEl.appendChild(algoBadge);
+
+        // Tarih
+        let dateText = '—';
+        if (entry.timestamp) {
+            const d = new Date(entry.timestamp);
+            dateText = d.toLocaleString(lang === 'tr' ? 'tr-TR' : 'en-US', {
+                day: '2-digit', month: '2-digit', year: '2-digit',
+                hour: '2-digit', minute: '2-digit'
+            });
+        }
+        const statDate = _makeStatItem('', dateText, 'value-muted');
+        statDate.classList.add('stat-date');
+
+        stats.appendChild(statBefore);
+        stats.appendChild(statAfter);
+        stats.appendChild(statSaved);
+        stats.appendChild(algoEl);
+        stats.appendChild(statDate);
+
+        card.appendChild(header);
+        card.appendChild(stats);
+        listEl.appendChild(card);
+    });
+}
+
+/** Yardımcı: istatistik sütunu oluşturur */
+function _makeStatItem(label, value, valueClass = '') {
+    const item = document.createElement('div');
+    item.className = 'history-stat-item';
+    if (label) {
+        const lbl = document.createElement('span');
+        lbl.className = 'history-stat-label';
+        lbl.textContent = label;
+        item.appendChild(lbl);
+    }
+    const val = document.createElement('span');
+    val.className = 'history-stat-value' + (valueClass ? ' ' + valueClass : '');
+    val.textContent = value;
+    item.appendChild(val);
+    return item;
+}
+
+/**
+ * Geçmiş kaydı silme: onay → tools tab'a geç → klasörü seç/ekle → uncompress → başarı mesajı
+ */
+async function _handleHistoryDelete(entry) {
+    // 1. Onay kutusu
+    const confirmed = await showThemedConfirm(
+        t('compress.historyDeleteConfirmTitle'),
+        t('compress.historyDeleteConfirmMsg'),
+        {
+            ok: t('compress.historyDeleteConfirmYes'),
+            cancel: t('compress.historyDeleteConfirmNo'),
+            danger: true
+        }
+    );
+    if (!confirmed) return;
+
+    // 2. Tools tab'a geç
+    _switchToToolsTab();
+
+    // 3. Klasörün addedFolders'da var mı kontrol et
+    let folderObj = addedFolders.find(
+        f => normalizePath(f.path) === normalizePath(entry.folderPath)
+    );
+
+    if (!folderObj) {
+        // Klasör listede yok — ekle
+        const name = entry.folderName || entry.folderPath.split(/[\\\/]/).pop() || entry.folderPath;
+        folderObj = {
+            name,
+            path: entry.folderPath,
+            size: t('compress.analyzing'),
+            fileCount: '...',
+            method: 'XPRESS4K',
+            isCompressed: true, // sıkıştırılmış olduğunu biliyoruz
+            isAnalyzing: false
+        };
+        addedFolders.push(folderObj);
+        renderFolderList();
+        document.querySelector('.compress-action-group').style.display = 'flex';
+    }
+
+    // 4. Klasörü seç
+    const folderIndex = addedFolders.findIndex(
+        f => normalizePath(f.path) === normalizePath(entry.folderPath)
+    );
+    if (folderIndex !== -1) {
+        selectFolder(folderIndex);
+    }
+
+    // 5. Uncompress işlemini çalıştır (var olan _runUncompressForFolder akışı)
+    try {
+        await _runUncompressForFolder(folderObj);
+        // ipc.js run-uncompression handler'ı zaten removeEntriesByPath çağırıyor,
+        // yani kayıt otomatik silindi. Başarı mesajı göster.
+        await showThemedAlert(
+            t('compress.historyDeleteSuccessTitle'),
+            t('compress.historyDeleteSuccess')
+        );
+    } catch (_) {
+        // Hata durumunda yeniden render — ipc handler hata mesajını zaten gösteriyor
+    }
+
+    // 6. History tab'ı yenile (arka planda güncel kalsın)
+    renderHistoryTab();
+}
+
+/**
+ * Sub-tab navigasyonunu Tools tab'a geçirir.
+ */
+function _switchToToolsTab() {
+    const toolsBtn = document.getElementById('compress-sub-nav-tools');
+    const historyBtn = document.getElementById('compress-sub-nav-history');
+    if (toolsBtn) {
+        toolsBtn.classList.add('active');
+        if (historyBtn) historyBtn.classList.remove('active');
+    }
+    document.querySelectorAll('.sub-tab-content').forEach(tab => {
+        tab.classList.toggle('active', tab.id === 'compress-tools');
     });
 }

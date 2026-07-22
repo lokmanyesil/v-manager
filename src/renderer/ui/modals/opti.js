@@ -1,6 +1,9 @@
 import { state } from '../../state.js';
 import { openModal, closeModal } from './base.js';
-import { showInfoModal, showLauncherWarningModal } from './info.js';
+import { showInfoModal, showLauncherWarningModal, showConfirmDialog } from './info.js';
+import { openOptiWizardModal, isOptiWizardRunning } from './optiWizard.js';
+import { isDlssWizardRunning } from './dlssWizard.js';
+import { selectExeWithPicker } from './exePicker.js';
 import { renderGames, updateHomeStats } from '../games.js';
 import { t } from '../../i18n/i18n.js';
 import { buildCacheStatusBar } from './cacheHelpers.js';
@@ -10,6 +13,7 @@ const optiGamePlaceholder = document.getElementById('opti-game-placeholder');
 const optiGameName = document.getElementById('opti-game-name');
 const optiInstallBtn = document.getElementById('opti-install-btn');
 const optiAutoInstallBtn = document.getElementById('opti-auto-install-btn');
+const optiWizardBtn = document.getElementById('opti-wizard-btn');
 const optiVersionSelect = document.getElementById('opti-version');
 const optiVersionsLoading = document.getElementById('opti-versions-loading');
 const optiInjectionSelect = document.getElementById('opti-injection');
@@ -40,7 +44,7 @@ export async function openOptiModal(forceRefreshOpti = false, forceRefreshFsr4 =
     if (!state.currentSelectedGame) return;
 
     // Already installed check
-    if (state.currentSelectedGame.hasOptiscaler) {
+    if (state.currentSelectedGame.hasOptiscaler || state.currentSelectedGame.hasOptiBuilder) {
         showInfoModal(t('opti.warningTitle'), t('opti.alreadyInstalled'), true);
         return;
     }
@@ -196,6 +200,11 @@ export async function openOptiModal(forceRefreshOpti = false, forceRefreshFsr4 =
 }
 
 async function runOptiInstall(isAuto) {
+    if (isOptiWizardRunning() || isDlssWizardRunning()) {
+        showInfoModal(t('update.infoTitle') || 'Bilgi', t('wizard.ongoingWarning'), true);
+        return;
+    }
+
     const selectedTag = optiVersionSelect.value;
     const injection = optiInjectionSelect.value;
     
@@ -401,12 +410,155 @@ async function _loadStandaloneOptiScalerReleases(forceRefresh = false) {
     }
 }
 
+function showOptiWizardPreFlight(onStart) {
+    const infoModal = document.getElementById('info-modal');
+    const infoTitle = document.getElementById('info-modal-title');
+    const infoBody = document.getElementById('info-modal-message');
+    const infoClose = document.getElementById('info-modal-ok-btn');
+    const infoProgress = document.getElementById('info-modal-progress');
+
+    if (!infoModal || !infoTitle || !infoBody) {
+        onStart();
+        return;
+    }
+
+    if (infoProgress) infoProgress.style.display = 'none';
+
+    infoTitle.textContent = t('wizard.preFlightTitle');
+    infoTitle.style.color = 'var(--accent-color)';
+    infoBody.innerHTML = t('wizard.preFlightBody');
+
+    // Clean up existing extra buttons
+    const existingExtra = infoModal.querySelector('.unsaved-extra-btn');
+    if (existingExtra) existingExtra.remove();
+
+    // Cancel Button
+    if (infoClose) {
+        infoClose.textContent = t('wizard.preFlightCancelBtn');
+        infoClose.style.backgroundColor = '#ef4444';
+        infoClose.style.color = '#ffffff';
+        infoClose.onclick = () => {
+            closeModal('info-modal');
+        };
+    }
+
+    // Start Button
+    const startBtn = document.createElement('button');
+    startBtn.className = 'unsaved-extra-btn';
+    startBtn.textContent = t('wizard.preFlightStartBtn');
+    startBtn.style.cssText = 'background:var(--accent-color);border:none;padding:10px 20px;border-radius:6px;cursor:pointer;font-size:14px;margin-left:10px;font-weight:bold;color:#000000;';
+    
+    startBtn.onclick = () => {
+        closeModal('info-modal');
+        onStart();
+    };
+
+    const btnRow = infoClose?.parentElement;
+    if (btnRow) btnRow.appendChild(startBtn);
+
+    openModal('info-modal');
+}
+
 export function initOptiListeners() {
     if (optiInstallBtn) {
         optiInstallBtn.addEventListener('click', () => runOptiInstall(false));
     }
     if (optiAutoInstallBtn) {
         optiAutoInstallBtn.addEventListener('click', () => runOptiInstall(true));
+    }
+
+    if (optiWizardBtn) {
+        optiWizardBtn.addEventListener('click', async () => {
+            if (isOptiWizardRunning() || isDlssWizardRunning()) {
+                showInfoModal(t('update.infoTitle') || 'Bilgi', t('wizard.ongoingWarning'), true);
+                return;
+            }
+
+            if (state.currentSelectedGame.hasOptiscaler || state.currentSelectedGame.hasOptiBuilder) {
+                showInfoModal(t('opti.warningTitle') || 'Uyarı! ⚠️', t('opti.alreadyInstalled'), true);
+                return;
+            }
+
+            const selectedTag = optiVersionSelect ? optiVersionSelect.value : null;
+            const injection = optiInjectionSelect ? optiInjectionSelect.value : null;
+
+            if (!selectedTag) {
+                showInfoModal(t('opti.errorTitle'), t('opti.selectVersion'), true);
+                return;
+            }
+
+            const release = state.currentOptiReleases.find(r => r.tag === selectedTag);
+            if (!release) {
+                showInfoModal(t('opti.errorTitle'), t('opti.releaseNotFound'), true);
+                return;
+            }
+
+            // Collect optional selections
+            const installFsr4 = optiFsr4Checkbox && optiFsr4Checkbox.checked;
+            const installPatcher = optiPatcherCheckbox && optiPatcherCheckbox.checked;
+
+            let fsr4Release = null;
+            if (installFsr4) {
+                const idx = optiFsr4VersionSelect ? parseInt(optiFsr4VersionSelect.value) : -1;
+                fsr4Release = (idx >= 0 && currentFsr4Releases[idx]) ? currentFsr4Releases[idx] : null;
+                if (!fsr4Release) {
+                    showInfoModal(t('opti.errorTitle'), t('opti.fsr4NoData'), true);
+                    return;
+                }
+            }
+
+            let patcherRelease = null;
+            if (installPatcher) {
+                const idx = optiPatcherVersionSelect ? parseInt(optiPatcherVersionSelect.value) : -1;
+                patcherRelease = (idx >= 0 && currentOptiPatcherReleases[idx]) ? currentOptiPatcherReleases[idx] : null;
+                if (!patcherRelease) {
+                    showInfoModal(t('opti.errorTitle'), t('opti.patcherNoData'), true);
+                    return;
+                }
+            }
+
+            showOptiWizardPreFlight(async () => {
+                let exePath = null;
+                try {
+                    const paths = await window.electronAPI.resolveGamePaths(
+                        state.currentSelectedGame.name,
+                        state.currentSelectedGame.exePath
+                    );
+                    if (paths && paths.exe_path && paths.exe_path.toLowerCase().endsWith('.exe')) {
+                        exePath = paths.exe_path;
+                    }
+
+                    if (!exePath) {
+                        const selected = await selectExeWithPicker(
+                            state.currentSelectedGame.name,
+                            paths ? paths.game_root : null
+                        );
+                        if (!selected) return; // User cancelled
+                        exePath = selected;
+                    }
+
+                    closeModal('optiscaler-modal');
+                    openOptiWizardModal({
+                        game: state.currentSelectedGame,
+                        version: release.name,
+                        tag: release.tag,
+                        downloadUrl: release.downloadUrl,
+                        injection,
+                        isAuto: true,
+                        installOptiPatcher: installPatcher,
+                        optiPatcherTag: patcherRelease ? patcherRelease.tag : null,
+                        optiPatcherUrl: patcherRelease ? patcherRelease.downloadUrl : null,
+                        installFsr4: installFsr4,
+                        fsr4Name: fsr4Release ? fsr4Release.name : null,
+                        fsr4Url: fsr4Release ? fsr4Release.downloadUrl : null,
+                        exePath: exePath,
+                        bypassDx12Check: false
+                    });
+                } catch (err) {
+                    showInfoModal(t('opti.errorTitle'), t('opti.pathCheckError') + err.message, true);
+                }
+            });
+        });
     }
 
     // FSR4 checkbox → enable/disable version dropdown

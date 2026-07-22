@@ -6,7 +6,7 @@ const STEAMGRID_API_KEY = 'b89ed9f1ab39a34c3b8ea71d756403ce';
 
 // Note that config.js is inside src/main, so __dirname is projectRoot/src/main.
 // In packaged builds, extraResources are placed under process.resourcesPath.
-const projectRoot = app.isPackaged 
+const projectRoot = app.isPackaged
     ? process.resourcesPath
     : path.resolve(__dirname, '..', '..');
 
@@ -35,6 +35,7 @@ function getModPresetsFile() { return path.join(app.getPath('userData'), 'mod-pr
 function getSettingsFile() { return path.join(app.getPath('userData'), 'settings.json'); }
 
 const DEVELOPER_GAMES_FILE = path.join(projectRoot, 'developer-games.json');
+const DLSS_ENABLER_GAMES_FILE = path.join(projectRoot, 'dlss_enabler_games.json');
 
 // Clean up old program-directory mods folder if it exists (run on app ready)
 function cleanOldModsFolder() {
@@ -98,6 +99,23 @@ function getDeveloperGames() {
         _devGamesCache = {};
     }
     return _devGamesCache;
+}
+
+/** Load dlss_enabler_games.json (read-only, cached in memory after first read). */
+let _dlssEnablerGamesCache = null;
+function getDlssEnablerGames() {
+    if (_dlssEnablerGamesCache !== null) return _dlssEnablerGamesCache;
+    try {
+        if (fs.existsSync(DLSS_ENABLER_GAMES_FILE)) {
+            _dlssEnablerGamesCache = JSON.parse(fs.readFileSync(DLSS_ENABLER_GAMES_FILE, 'utf-8'));
+        } else {
+            _dlssEnablerGamesCache = {};
+        }
+    } catch (e) {
+        console.error('[CONFIG] Could not read dlss_enabler_games.json:', e.message);
+        _dlssEnablerGamesCache = {};
+    }
+    return _dlssEnablerGamesCache;
 }
 
 /** Load user-games.json (always read from disk — user may have changed it). */
@@ -224,7 +242,7 @@ function resolveActualGameRoot(gameName, chosenExePath) {
                         }
                     }
                 }
-            } catch(e) {}
+            } catch (e) { }
         }
     }
 
@@ -248,10 +266,10 @@ function resolveActualGameRoot(gameName, chosenExePath) {
     if (userGames[normKey] && userGames[normKey].game_root) {
         const rootLow = userGames[normKey].game_root.toLowerCase().replace(/\\/g, '/');
         const isSuspiciousBin = rootLow.endsWith('/binaries/win64') ||
-                                rootLow.endsWith('/bin/x64') ||
-                                rootLow.endsWith('/bin/x64_dx12') ||
-                                rootLow.endsWith('/binaries/win32') ||
-                                rootLow.endsWith('/win64');
+            rootLow.endsWith('/bin/x64') ||
+            rootLow.endsWith('/bin/x64_dx12') ||
+            rootLow.endsWith('/binaries/win32') ||
+            rootLow.endsWith('/win64');
         if (!isSuspiciousBin) {
             return userGames[normKey].game_root;
         }
@@ -286,7 +304,7 @@ function resolveActualGameRoot(gameName, chosenExePath) {
             if (stats.isDirectory()) {
                 return dbGame.exePath;
             }
-        } catch(e) {}
+        } catch (e) { }
     }
 
     // 8. Absolute fallback
@@ -304,6 +322,24 @@ function loadExistingGames() {
             const rawGames = JSON.parse(rawData);
             if (Array.isArray(rawGames)) {
                 existingGamesState = rawGames;
+                // Self-healing: if manual game has incorrect or missing exePath compared to user-games.json, update it.
+                try {
+                    const userGames = getUserGames();
+                    existingGamesState.forEach(game => {
+                        if (game.source === 'manual') {
+                            const normKey = normalizeGameKey(game.name || '');
+                            if (userGames[normKey] && userGames[normKey].exe_path) {
+                                const uExe = userGames[normKey].exe_path;
+                                if (game.exePath !== uExe) {
+                                    console.log(`[CONFIG] Self-healing manual game "${game.name}": updating exePath from "${game.exePath}" to "${uExe}"`);
+                                    game.exePath = uExe;
+                                }
+                            }
+                        }
+                    });
+                } catch (err) {
+                    console.error('[CONFIG] Error self-healing manual games:', err.message);
+                }
                 // Re-populate favoriteNames from loaded games
                 favoriteNames = existingGamesState.filter(g => g.isFavorite).map(g => g.name);
                 needsDedup = true; // Mark as needing dedup after load
@@ -341,11 +377,11 @@ function loadBlacklist() {
 function deduplicateState() {
     const unique = [];
     const seenNames = new Set();
-    
+
     // Sort so that steam/epic versions or versions with mod info are preferred when merging
     const sorted = [...existingGamesState].sort((a, b) => {
-        const scoreA = (a.hasDlssEnabler ? 5 : 0) + (a.hasOptiscaler ? 5 : 0) + (a.hasStreamline ? 5 : 0) + (a.cover ? 3 : 0) + (a.source !== 'manual' ? 2 : 0);
-        const scoreB = (b.hasDlssEnabler ? 5 : 0) + (b.hasOptiscaler ? 5 : 0) + (b.hasStreamline ? 5 : 0) + (b.cover ? 3 : 0) + (b.source !== 'manual' ? 2 : 0);
+        const scoreA = (a.hasDlssEnabler ? 5 : 0) + (a.hasOptiscaler ? 5 : 0) + (a.hasOptiBuilder ? 5 : 0) + (a.hasStreamline ? 5 : 0) + (a.cover ? 3 : 0) + (a.source !== 'manual' ? 2 : 0);
+        const scoreB = (b.hasDlssEnabler ? 5 : 0) + (b.hasOptiscaler ? 5 : 0) + (b.hasOptiBuilder ? 5 : 0) + (b.hasStreamline ? 5 : 0) + (b.cover ? 3 : 0) + (b.source !== 'manual' ? 2 : 0);
         return scoreB - scoreA;
     });
 
@@ -368,6 +404,12 @@ function deduplicateState() {
                     if (game.optiscalerVersion) existing.optiscalerVersion = game.optiscalerVersion;
                     if (game.optiscalerInjection) existing.optiscalerInjection = game.optiscalerInjection;
                     if (game.optiscalerPath) existing.optiscalerPath = game.optiscalerPath;
+                }
+                if (game.hasOptiBuilder) {
+                    existing.hasOptiBuilder = true;
+                    if (game.optiBuilderVersion) existing.optiBuilderVersion = game.optiBuilderVersion;
+                    if (game.optiBuilderInjection) existing.optiBuilderInjection = game.optiBuilderInjection;
+                    if (game.optiBuilderPath) existing.optiBuilderPath = game.optiBuilderPath;
                 }
                 if (game.hasStreamline) {
                     existing.hasStreamline = true;
@@ -398,7 +440,7 @@ function deduplicateState() {
             }
         }
     }
-    
+
     existingGamesState = unique;
     // FIX 5b: Reset dirty flag after dedup completes
     needsDedup = false;
@@ -492,7 +534,7 @@ function saveModPresets(mod, presets) {
         const file = getModPresetsFile();
         let all = {};
         if (fs.existsSync(file)) {
-            try { all = JSON.parse(fs.readFileSync(file, 'utf-8')); } catch(_) {}
+            try { all = JSON.parse(fs.readFileSync(file, 'utf-8')); } catch (_) { }
         }
         all[mod] = presets;
         atomicWriteFile(file, JSON.stringify(all, null, 2));
@@ -505,7 +547,10 @@ function saveModPresets(mod, presets) {
 
 function getSettings() {
     const filePath = getSettingsFile();
-    const defaultSettings = { resolution: '1280x720' };
+    const defaultSettings = { 
+        resolution: '1280x720',
+        discordRpcEnabled: true
+    };
     try {
         if (fs.existsSync(filePath)) {
             const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
@@ -535,23 +580,25 @@ module.exports = {
     get modsPath() { return getModsPath(); },
     get streamlineModsPath() { return getStreamlineModsPath(); },
     DEVELOPER_GAMES_FILE,
+    DLSS_ENABLER_GAMES_FILE,
     get USER_GAMES_FILE() { return getUserGamesFile(); },
     cleanOldModsFolder,
-    
+
     // Dual-layer path system
     normalizeGameKey,
     getDeveloperGames,
+    getDlssEnablerGames,
     getUserGames,
     saveUserGames,
     getGamePaths,
     resolveActualGameRoot,
-    
+
     getExistingGamesState: () => existingGamesState,
     setExistingGamesState: (newState) => { existingGamesState = newState; needsDedup = true; }, // FIX 5b
     markNeedsDedup: () => { needsDedup = true; }, // FIX 5b: Allow external modules to trigger dedup
     getBlacklistState: () => blacklistState,
     setBlacklistState: (newState) => { blacklistState = newState; },
-    
+
     loadExistingGames,
     loadBlacklist,
     saveGamesState,

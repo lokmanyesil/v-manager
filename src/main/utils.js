@@ -82,6 +82,37 @@ function isGameRunning(exePath) {
     });
 }
 
+function checkGameRunningDetailed(exePath) {
+    return new Promise((resolve) => {
+        const exeName = path.basename(exePath);
+        const proc = spawn('tasklist.exe', ['/FI', `IMAGENAME eq ${exeName}`, '/NH'], {
+            shell: false
+        });
+        let stdout = '';
+        let stderr = '';
+        proc.stdout.on('data', d => stdout += d.toString());
+        proc.stderr.on('data', d => stderr += d.toString());
+        proc.on('error', (err) => resolve({ status: 'error', error: err }));
+        proc.on('close', (code) => {
+            if (code !== 0) {
+                resolve({ status: 'error', error: new Error(`tasklist exited with code ${code}: ${stderr.trim()}`) });
+            } else {
+                const lowerStdout = stdout.toLowerCase();
+                if (lowerStdout.includes('error:') || lowerStdout.includes('hata:')) {
+                    resolve({ status: 'error', error: new Error(stdout.trim()) });
+                    return;
+                }
+                const lowerExe = exeName.toLowerCase();
+                if (lowerStdout.includes(lowerExe)) {
+                    resolve({ status: 'running' });
+                } else {
+                    resolve({ status: 'not_running' });
+                }
+            }
+        });
+    });
+}
+
 // C-07: Use spawn with array args to avoid path-based command injection
 function getFileDescription(filePath) {
     return new Promise((resolve) => {
@@ -256,9 +287,124 @@ function getSystemDrives() {
     });
 }
 
+function checkDx12Support(exePath) {
+    return new Promise((resolve) => {
+        if (!fs.existsSync(exePath)) {
+            resolve({ hasDx12: false });
+            return;
+        }
+
+        const stream = fs.createReadStream(exePath, { highWaterMark: 4 * 1024 * 1024 }); // 4MB chunks
+        let totalRead = 0;
+        const maxBytesToScan = 250 * 1024 * 1024; // Scan up to 250MB
+        let hasDx12 = false;
+        let prevBuffer = Buffer.alloc(0);
+
+        stream.on('data', (chunk) => {
+            totalRead += chunk.length;
+            
+            // Concatenate with overlap from previous chunk to avoid split strings
+            const combined = Buffer.concat([prevBuffer, chunk]);
+            
+            // Check ASCII/binary case-insensitively
+            const asciiContent = combined.toString('binary').toLowerCase();
+            if (asciiContent.includes('d3d12.dll')) {
+                hasDx12 = true;
+            }
+            
+            // Check UTF-16LE case-insensitively
+            const utf16Length = combined.length - (combined.length % 2);
+            const utf16Content = combined.subarray(0, utf16Length).toString('utf16le').toLowerCase();
+            if (utf16Content.includes('d3d12.dll')) {
+                hasDx12 = true;
+            }
+
+            // Save overlapping buffer for next chunk (64 bytes to cover split strings in both encodings)
+            prevBuffer = chunk.subarray(Math.max(0, chunk.length - 64));
+
+            // If we found it, or reached the scan limit, stop
+            if (hasDx12 || totalRead >= maxBytesToScan) {
+                stream.destroy();
+            }
+        });
+
+        stream.on('close', () => {
+            resolve({ hasDx12 });
+        });
+
+        stream.on('end', () => {
+            resolve({ hasDx12 });
+        });
+
+        stream.on('error', (err) => {
+            console.error('[UTILS] DX12 support check error:', err);
+            resolve({ hasDx12: false });
+        });
+    });
+}
+
+function scanFolderForExes(folderPath) {
+    const results = [];
+    if (!folderPath || !fs.existsSync(folderPath)) return results;
+
+    const visited = new Set();
+    const queue = [{ dirPath: folderPath, depth: 0 }];
+
+    const EXCLUDED_DIRS = new Set([
+        '.git', 'node_modules', '_redist', 'redist', 'directx', 
+        'engine', 'dotnet', 'crashreporter', 'cache', '_support'
+    ]);
+
+    const EXCLUDED_FILE_FRAGMENTS = [
+        'uninstall', 'crashreporter', 'unitycrashhandler', 
+        'vc_redist', 'setup', 'install', 'touchup', 'bugreport'
+    ];
+
+    while (queue.length > 0) {
+        const { dirPath, depth } = queue.shift();
+
+        let realPath;
+        try {
+            realPath = fs.realpathSync(dirPath);
+        } catch (e) {
+            console.error(`[UTILS] realpathSync failed for ${dirPath}:`, e.message);
+            continue;
+        }
+
+        if (visited.has(realPath)) continue;
+        visited.add(realPath);
+
+        try {
+            const entries = fs.readdirSync(realPath, { withFileTypes: true });
+            for (const entry of entries) {
+                const fullPath = path.join(realPath, entry.name);
+                const nameLower = entry.name.toLowerCase();
+
+                if (entry.isDirectory()) {
+                    if (depth < 3 && !EXCLUDED_DIRS.has(nameLower)) {
+                        queue.push({ dirPath: fullPath, depth: depth + 1 });
+                    }
+                } else if (entry.isFile() && nameLower.endsWith('.exe')) {
+                    const shouldExclude = EXCLUDED_FILE_FRAGMENTS.some(fragment => nameLower.includes(fragment));
+                    if (shouldExclude) {
+                        console.log(`[SCANNER-FILTER] Filtered out executable: ${fullPath}`);
+                    } else {
+                        results.push(fullPath);
+                    }
+                }
+            }
+        } catch (err) {
+            console.error(`[UTILS] Error reading directory ${realPath}:`, err.message);
+        }
+    }
+
+    return results;
+}
+
 module.exports = {
     downloadImage,
     isGameRunning,
+    checkGameRunningDetailed,
     getFileDescription,
     getFileVersion,
     isOptiScalerFile,
@@ -266,5 +412,7 @@ module.exports = {
     getFolderStats,
     getFileHash,
     compareVersions,
-    getSystemDrives
+    getSystemDrives,
+    checkDx12Support,
+    scanFolderForExes
 };

@@ -1,4 +1,4 @@
-import { closeModal } from './base.js';
+import { openModal, closeModal } from './base.js';
 import { t } from '../../i18n/i18n.js';
 
 export function showInfoModal(title, message, isError = false) {
@@ -92,4 +92,64 @@ export function showLauncherWarningModal(onConfirm) {
 
     infoModal.classList.add('active');
     infoModal.style.zIndex = '9999';
+}
+
+export function showConfirmDialog(title, message) {
+    return new Promise((resolve) => {
+        const modal = document.getElementById('general-confirm-modal');
+        const titleEl = document.getElementById('general-confirm-title');
+        const messageEl = document.getElementById('general-confirm-message');
+        const yesBtn = document.getElementById('general-confirm-yes-btn');
+        const noBtn = document.getElementById('general-confirm-no-btn');
+        const closeBtn = modal?.querySelector('.close-modal');
+
+        if (!modal || !titleEl || !messageEl || !yesBtn || !noBtn) {
+            resolve(false);
+            return;
+        }
+
+        titleEl.textContent = title;
+        messageEl.textContent = message;
+
+        yesBtn.textContent = t('dlss.yesBtn') || 'Evet';
+        noBtn.textContent = t('dlss.noBtn') || 'Hayır';
+
+        // Apply contrast text color based on the current theme
+        const isDark = document.body.getAttribute('data-theme') === 'dark' || document.documentElement.getAttribute('data-theme') === 'dark';
+        yesBtn.style.color = isDark ? '#000000' : '#ffffff';
+
+        let active = false;
+        setTimeout(() => { active = true; }, 300);
+
+        const cleanUp = () => {
+            yesBtn.onclick = null;
+            noBtn.onclick = null;
+            if (closeBtn) closeBtn.onclick = null;
+        };
+
+        yesBtn.onclick = () => {
+            if (!active) return;
+            cleanUp();
+            closeModal('general-confirm-modal');
+            resolve(true);
+        };
+
+        noBtn.onclick = () => {
+            if (!active) return;
+            cleanUp();
+            closeModal('general-confirm-modal');
+            resolve(false);
+        };
+
+        if (closeBtn) {
+            closeBtn.onclick = () => {
+                if (!active) return;
+                cleanUp();
+                closeModal('general-confirm-modal');
+                resolve(false);
+            };
+        }
+
+        openModal('general-confirm-modal');
+    });
 }

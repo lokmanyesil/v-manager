@@ -1,6 +1,6 @@
 {
   "name": "v-manager",
-  "version": "0.1.8",
+  "version": "0.6.0",
   "description": "V-Manager made by vuenxx",
   "main": "main.js",
   "repository": {
@@ -9,7 +9,12 @@
   },
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder --win --x64 --publish always"
+    "compile:win": "node tools/compile.js",
+    "compile:mac": "node tools/compile.js",
+    "compile:linux": "node tools/compile.js",
+    "build": "electron-builder --win --x64 --publish always",
+    "build:local": "electron-builder --win --x64 --publish never",
+    "build:compile": "npm run compile:win && electron-builder --win --x64 --publish always"
   },
   "build": {
     "appId": "com.vuenxx.vmanager",
@@ -19,10 +24,31 @@
       "owner": "vuenxx",
       "repo": "v-manager"
     },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer.js",
+      "activation_preload.js",
+      "activation.html",
+      "activation_renderer.js",
+      "index.html",
+      "styles.css",
+      "icons/**",
+      "program_logo.ico",
+      "program_logo.png",
+      "node_modules/**",
+      "src/main/**",
+      "src/renderer/**",
+      "!tools/**"
+    ],
     "extraResources": [
       {
         "from": "developer-games.json",
         "to": "developer-games.json"
+      },
+      {
+        "from": "dlss_enabler_games.json",
+        "to": "dlss_enabler_games.json"
       }
     ],
     "win": {
@@ -39,8 +65,11 @@
   "dependencies": {
     "7zip-bin": "~5.2.0",
     "adm-zip": "^0.5.17",
+    "bytenode": "^1.5.7",
+    "discord-rpc": "^4.0.1",
     "electron-log": "^5.1.2",
     "electron-updater": "^6.8.3",
-    "extract-zip": "^2.0.1"
+    "extract-zip": "^2.0.1",
+    "node-machine-id": "^1.1.12"
   }
 }

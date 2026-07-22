@@ -4,6 +4,8 @@ import { showInfoModal, showLauncherWarningModal } from './info.js';
 import { renderGames, updateHomeStats } from '../games.js';
 import { t } from '../../i18n/i18n.js';
 import { buildCacheStatusBar } from './cacheHelpers.js';
+import { openWizardModal, isDlssWizardRunning } from './dlssWizard.js';
+import { selectExeWithPicker } from './exePicker.js';
 
 const dlssGameCover = document.getElementById('dlss-game-cover');
 const dlssGamePlaceholder = document.getElementById('dlss-game-placeholder');
@@ -21,8 +23,8 @@ let currentDlssReleases = [];
 export async function openDlssModal(forceRefresh = false) {
     if (!state.currentSelectedGame) return;
 
-    // Symmetric conflict check: if OptiScaler is already installed
-    if (state.currentSelectedGame.hasOptiscaler) {
+    // Symmetric conflict check: if OptiScaler or OptiBuilder is already installed
+    if (state.currentSelectedGame.hasOptiscaler || state.currentSelectedGame.hasOptiBuilder) {
         showInfoModal(t('dlss.warningTitle'), t('dlss.conflictWarning'), true);
         return;
     }
@@ -181,6 +183,10 @@ export function initDlssListeners() {
 
     if (dlssInstallBtn) {
         dlssInstallBtn.addEventListener('click', async () => {
+            if (isDlssWizardRunning()) {
+                showInfoModal(t('update.infoTitle') || 'Bilgi', t('wizard.ongoingWarning'), true);
+                return;
+            }
             const version = dlssVersionSelect.value;
             if (!version) {
                 showInfoModal(t('dlss.errorTitle'), t('dlss.selectVersion'), true);
@@ -208,6 +214,10 @@ export function initDlssListeners() {
 
     if (dlssAutoInstallBtn) {
         dlssAutoInstallBtn.addEventListener('click', async () => {
+            if (isDlssWizardRunning()) {
+                showInfoModal(t('update.infoTitle') || 'Bilgi', t('wizard.ongoingWarning'), true);
+                return;
+            }
             const version = dlssVersionSelect.value;
             if (!version) {
                 showInfoModal(t('dlss.errorTitle'), t('dlss.selectVersion'), true);
@@ -248,4 +258,105 @@ export function initDlssListeners() {
             }
         });
     }
+
+    const dlssWizardBtn = document.getElementById('dlss-wizard-btn');
+    if (dlssWizardBtn) {
+        dlssWizardBtn.addEventListener('click', async () => {
+            if (isDlssWizardRunning()) {
+                showInfoModal(t('update.infoTitle') || 'Bilgi', t('wizard.ongoingWarning'), true);
+                return;
+            }
+            if (state.currentSelectedGame && state.currentSelectedGame.hasDlssEnabler) {
+                showInfoModal(t('update.infoTitle') || 'Bilgi', t('wizard.alreadyInstalledWarning'), true);
+                return;
+            }
+            const version = dlssVersionSelect.value;
+            if (!version) {
+                showInfoModal(t('dlss.errorTitle'), t('dlss.selectVersion'), true);
+                return;
+            }
+
+            if (!state.currentSelectedGame) return;
+
+            showWizardPreFlight(async () => {
+                let exePath = null;
+                try {
+                    const paths = await window.electronAPI.resolveGamePaths(
+                        state.currentSelectedGame.name,
+                        state.currentSelectedGame.exePath
+                    );
+                    if (paths && paths.exe_path && paths.exe_path.toLowerCase().endsWith('.exe')) {
+                        exePath = paths.exe_path;
+                    }
+
+                    if (!exePath) {
+                        const selected = await selectExeWithPicker(
+                            state.currentSelectedGame.name,
+                            paths ? paths.game_root : null
+                        );
+                        if (!selected) return; // User cancelled
+                        exePath = selected;
+                    }
+
+                    const dllName = dlssDllNameSelect ? dlssDllNameSelect.value : 'version.dll';
+                    const release = currentDlssReleases.find(r => r.name === version);
+                    const downloadUrl = release ? release.downloadUrl : null;
+                    closeModal('dlss-modal');
+                    openWizardModal(state.currentSelectedGame, version, dllName, exePath, downloadUrl);
+                } catch (err) {
+                    showInfoModal(t('dlss.errorTitle'), t('dlss.pathCheckError') + err.message, true);
+                }
+            });
+        });
+    }
 }
+
+function showWizardPreFlight(onStart) {
+    const infoModal = document.getElementById('info-modal');
+    const infoTitle = document.getElementById('info-modal-title');
+    const infoBody = document.getElementById('info-modal-message');
+    const infoClose = document.getElementById('info-modal-ok-btn');
+    const infoProgress = document.getElementById('info-modal-progress');
+
+    if (!infoModal || !infoTitle || !infoBody) {
+        onStart();
+        return;
+    }
+
+    if (infoProgress) infoProgress.style.display = 'none';
+
+    infoTitle.textContent = t('wizard.preFlightTitle');
+    infoTitle.style.color = '#6366f1';
+    infoBody.innerHTML = t('wizard.preFlightBody');
+
+    // Clean up existing extra buttons
+    const existingExtra = infoModal.querySelector('.unsaved-extra-btn');
+    if (existingExtra) existingExtra.remove();
+
+    // Cancel Button
+    if (infoClose) {
+        infoClose.textContent = t('wizard.preFlightCancelBtn');
+        infoClose.style.backgroundColor = '#ef4444';
+        infoClose.style.color = '#ffffff';
+        infoClose.onclick = () => {
+            closeModal('info-modal');
+        };
+    }
+
+    // Start Button
+    const startBtn = document.createElement('button');
+    startBtn.className = 'unsaved-extra-btn';
+    startBtn.textContent = t('wizard.preFlightStartBtn');
+    startBtn.style.cssText = 'background:#6366f1;border:none;padding:10px 20px;border-radius:6px;cursor:pointer;font-size:14px;margin-left:10px;font-weight:bold;color:#ffffff;';
+    
+    startBtn.onclick = () => {
+        closeModal('info-modal');
+        onStart();
+    };
+
+    const btnRow = infoClose?.parentElement;
+    if (btnRow) btnRow.appendChild(startBtn);
+
+    openModal('info-modal');
+}
+

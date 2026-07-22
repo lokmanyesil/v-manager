@@ -463,28 +463,47 @@ async function checkStreamlineBackup(game, isAuto, manualExePath, window) {
         // present a native warning dialog to allow the user to select the Streamline directory manually.
         if (window) {
             const { dialog } = require('electron');
+            const settings = config.getSettings();
+            const lang = settings.language || 'tr';
+            const isEn = lang === 'en';
+
             dialog.showMessageBoxSync(window, {
                 type: 'warning',
-                title: 'Streamline Bulunamadı',
-                message: 'Otomatik tarama başarısız oldu. Lütfen Streamline dosyalarının bulunduğu klasörü seçin.',
-                buttons: ['Tamam']
+                title: isEn ? 'Streamline Not Found' : 'Streamline Bulunamadı',
+                message: isEn 
+                    ? 'Automatic scan failed. Please select the folder where Streamline files are located.'
+                    : 'Otomatik tarama başarısız oldu. Lütfen Streamline dosyalarının bulunduğu klasörü seçin.',
+                buttons: isEn ? ['OK'] : ['Tamam']
             });
 
             const { canceled, filePaths } = await dialog.showOpenDialog(window, {
-                title: 'Streamline Klasörünü Seçin',
+                title: isEn ? 'Select Streamline Folder' : 'Streamline Klasörünü Seçin',
                 properties: ['openDirectory']
             });
 
             if (canceled || filePaths.length === 0) {
                 console.log(`[STREAMLINE-BACKUP-CHECK] Manuel klasör seçimi iptal edildi.`);
-                return { success: false, error: 'Oyun dizininde Streamline altyapısı bulunamadı.' };
+                return { 
+                    success: false, 
+                    error: isEn 
+                        ? 'Streamline framework was not found in the game directory.'
+                        : 'Oyun dizininde Streamline altyapısı bulunamadı.' 
+                };
             }
 
             targetDir = filePaths[0];
             console.log(`[STREAMLINE-BACKUP-CHECK] Kullanıcı tarafından seçilen klasör: ${targetDir}`);
         } else {
             console.warn(`[STREAMLINE-BACKUP-CHECK] Hata: pencere (window) referansı yok ve Streamline bulunamadı.`);
-            return { success: false, error: 'Oyun dizininde Streamline altyapısı bulunamadı.' };
+            const settings = config.getSettings();
+            const lang = settings.language || 'tr';
+            const isEn = lang === 'en';
+            return { 
+                success: false, 
+                error: isEn 
+                    ? 'Streamline framework was not found in the game directory.'
+                    : 'Oyun dizininde Streamline altyapısı bulunamadı.' 
+            };
         }
     }
 
@@ -704,11 +723,18 @@ async function getStreamlineReleases(forceRefresh = false) {
         if (!response.ok) throw new Error(`GitHub API HTTP error: ${response.status}`);
         const releases = await response.json();
 
-        const mappedReleases = releases.slice(0, 10).map(r => ({
-            name: r.name || r.tag_name,
-            tag:  r.tag_name,
-            downloadUrl: r.assets.find(a => a.name.toLowerCase().endsWith('.zip'))?.browser_download_url
-        }));
+        const mappedReleases = [];
+        for (const r of releases.slice(0, 10)) {
+            const asset = r.assets && r.assets.find(a => a.name.toLowerCase().endsWith('.zip'));
+            if (!asset) continue;
+            mappedReleases.push({
+                name: r.name || r.tag_name,
+                tag:  r.tag_name,
+                downloadUrl: asset.browser_download_url,
+                size: asset.size,
+                publishedAt: r.published_at
+            });
+        }
 
         releaseCache.writeCache(MOD_NAME, mappedReleases);
         const fetchedAt = Date.now();

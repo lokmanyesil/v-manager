@@ -1,4 +1,4 @@
-const { BrowserWindow } = require('electron');
+const { app, BrowserWindow } = require('electron');
 const path = require('path');
 
 const config = require('./config');
@@ -25,17 +25,17 @@ function createWindow() {
         minWidth: 800,
         minHeight: 600,
         autoHideMenuBar: true,
-        icon: path.resolve(__dirname, '..', '..', 'program_logo.ico'),
+        icon: path.join(app.getAppPath(), 'program_logo.ico'),
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
             // Since window.js is inside projectRoot/src/main/,
             // preload.js is located at projectRoot/preload.js (two levels up)
-            preload: path.resolve(__dirname, '..', '..', 'preload.js')
+            preload: path.join(app.getAppPath(), 'preload.js')
         }
     });
 
-    mainWindow.loadFile(path.resolve(__dirname, '..', '..', 'index.html'));
+    mainWindow.loadFile(path.join(app.getAppPath(), 'index.html'));
 
     mainWindow.on('close', (e) => {
         const ipc = require('./ipc');

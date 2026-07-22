@@ -79,9 +79,12 @@ async function getDlssVersions() {
 
 async function selectExe(event) {
     const window = BrowserWindow.fromWebContents(event.sender);
+    const settings = config.getSettings();
+    const lang = settings.language || 'tr';
+    const isEn = lang === 'en';
 
     const { canceled, filePaths } = await dialog.showOpenDialog(window, {
-        title: 'Oyun Seç (.exe)',
+        title: isEn ? 'Select Game (.exe)' : 'Oyun Seç (.exe)',
         filters: [{ name: 'Executables', extensions: ['exe'] }],
         properties: ['openFile']
     });
@@ -608,7 +611,9 @@ async function getDlssEnablerReleases(forceRefresh = false) {
             mappedReleases.push({
                 name: r.name || r.tag_name,
                 tag:  r.tag_name,
-                downloadUrl: asset.browser_download_url
+                downloadUrl: asset.browser_download_url,
+                size: asset.size,
+                publishedAt: r.published_at
             });
         }
 
@@ -729,5 +734,7 @@ module.exports = {
     parseZipForDlss,
     installDlssFromZip,
     getDlssEnablerReleases,
-    downloadDlssEnablerRelease
+    downloadDlssEnablerRelease,
+    copyDlssFiles,
+    checkConflicts
 };

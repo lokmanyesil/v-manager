@@ -1,4 +1,4 @@
-import { showInfoModal, showLauncherWarningModal } from './modals/info.js';
+import { showInfoModal, showLauncherWarningModal, showConfirmDialog } from './modals/info.js';
 import { t } from '../i18n/i18n.js';
 
 const path = window._nodePath; // Not available — we use string ops
@@ -48,8 +48,13 @@ export async function renderUserGamesUI() {
 
             const deleteBtn = tr.querySelector('.delete-user-game-btn');
             deleteBtn.addEventListener('click', async () => {
-                await window.electronAPI.deleteUserGame(normKey);
-                renderUserGamesUI();
+                const title = t('settings.deleteConfirmTitle');
+                const message = t('settings.deleteConfirmMsg').replace('{game}', displayName);
+                const confirmed = await showConfirmDialog(title, message);
+                if (confirmed) {
+                    await window.electronAPI.deleteUserGame(normKey);
+                    renderUserGamesUI();
+                }
             });
 
             listEl.appendChild(tr);
@@ -309,6 +314,7 @@ export function initSettingsListeners() {
     document.addEventListener('tab-activated', (e) => {
         if (e.detail && e.detail.tabId === 'settings-tab') {
             renderUserGamesUI();
+            updateLogManagementUI();
         }
     });
 
@@ -334,5 +340,81 @@ export function initSettingsListeners() {
         });
     }
 
+    // ── Log Management Settings ──────────────────────────────────────────────
+    const clearLogsBtn = document.getElementById('wizard-clear-logs-btn');
+    if (clearLogsBtn) {
+        clearLogsBtn.addEventListener('click', async () => {
+            const info = await window.electronAPI.getWizardLogsInfo();
+            if (info.count === 0) {
+                showInfoModal(t('update.infoTitle') || 'Bilgi', t('wizard.clearLogsEmpty'));
+                return;
+            }
+            if (!await showConfirmDialog(t('update.infoTitle') || 'Bilgi', t('wizard.clearLogsConfirm'))) {
+                return;
+            }
+            const res = await window.electronAPI.clearWizardLogs();
+            if (res.success) {
+                showInfoModal(t('dlss.successTitle') || 'Başarılı', t('wizard.clearLogsSuccess'));
+                await updateLogManagementUI();
+            } else {
+                showInfoModal(t('dlss.errorTitle') || 'Hata', res.error, true);
+            }
+        });
+    }
+
+    const openLogsBtn = document.getElementById('wizard-open-logs-btn');
+    if (openLogsBtn) {
+        openLogsBtn.addEventListener('click', async () => {
+            await window.electronAPI.openWizardLogsDir();
+        });
+    }
+
+    // ── Discord Rich Presence Settings ──────────────────────────────────────
+    const discordToggle = document.getElementById('discord-rpc-toggle');
+
+    if (discordToggle) {
+        // Fetch setting and populate checkbox
+        window.electronAPI.getSettings().then(settings => {
+            if (settings) {
+                discordToggle.checked = !!settings.discordRpcEnabled;
+            }
+        }).catch(err => {
+            console.error('Failed to load Discord RPC setting:', err);
+        });
+
+        // Save setting instantly when toggled
+        discordToggle.addEventListener('change', async () => {
+            try {
+                const settings = await window.electronAPI.getSettings();
+                settings.discordRpcEnabled = discordToggle.checked;
+                await window.electronAPI.saveSettings(settings);
+            } catch (err) {
+                console.error('Failed to save Discord RPC setting:', err);
+            }
+        });
+    }
+
+    updateLogManagementUI();
+
     window.electronAPI.logToMain('initSettingsListeners: Done');
 }
+
+async function updateLogManagementUI() {
+    const logCountEl = document.getElementById('wizard-log-count');
+    const logSizeEl = document.getElementById('wizard-log-size');
+    if (!logCountEl || !logSizeEl) return;
+
+    try {
+        const info = await window.electronAPI.getWizardLogsInfo();
+        logCountEl.textContent = info.count;
+        const sizeKB = (info.sizeBytes / 1024).toFixed(2);
+        if (parseFloat(sizeKB) >= 1024) {
+            logSizeEl.textContent = `${(parseFloat(sizeKB) / 1024).toFixed(2)} MB`;
+        } else {
+            logSizeEl.textContent = `${sizeKB} KB`;
+        }
+    } catch (e) {
+        console.error('Failed to get log management info:', e);
+    }
+}
+

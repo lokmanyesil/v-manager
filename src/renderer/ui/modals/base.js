@@ -2,6 +2,9 @@
 let _settingsCloseGuard = null;
 export function setSettingsCloseGuard(fn) { _settingsCloseGuard = fn; }
 
+let _manualAddCloseGuard = null;
+export function setManualAddCloseGuard(fn) { _manualAddCloseGuard = fn; }
+
 export function closeModal(modalId) {
     if (modalId) {
         const modal = document.getElementById(modalId);
@@ -52,7 +55,7 @@ export function initBaseModals() {
     const closeModalBtns = document.querySelectorAll('.close-modal');
     closeModalBtns.forEach(btn => {
         const target = btn.getAttribute('data-target');
-        if (target === 'settings-modal') return;
+        if (target === 'settings-modal' || target === 'manual-add-modal') return;
 
         btn.addEventListener('click', () => {
             closeModal(target);
@@ -62,16 +65,13 @@ export function initBaseModals() {
     const modModal = document.getElementById('mod-modal');
     const dlssModal = document.getElementById('dlss-modal');
     const streamlineModal = document.getElementById('streamline-modal');
-    const streamlineVersionsModal = document.getElementById('streamline-versions-modal');
     const optiscalerModal = document.getElementById('optiscaler-modal');
     const confirmModal = document.getElementById('confirm-modal');
     const manageModal = document.getElementById('manage-modal');
-    const optiscalerVersionsModal = document.getElementById('optiscaler-versions-modal');
-    const optipatcherVersionsModal = document.getElementById('optipatcher-versions-modal');
-    const fsr4VersionsModal = document.getElementById('fsr4-versions-modal');
     const uninstallModal = document.getElementById('uninstall-modal');
     const dlssConfirmModal = document.getElementById('dlss-confirm-modal');
     const infoModal = document.getElementById('info-modal');
+    const exePickerModal = document.getElementById('exe-picker-modal');
     const uninstallConfirmModal = document.getElementById('uninstall-confirm-modal');
     const refreshConfirmModal = document.getElementById('refresh-confirm-modal');
     const scanProgressModal = document.getElementById('scan-progress-modal');
@@ -83,20 +83,23 @@ export function initBaseModals() {
         if (e.target === modModal) closeModal('mod-modal');
         if (e.target === dlssModal) closeModal('dlss-modal');
         if (e.target === streamlineModal) closeModal('streamline-modal');
-        if (e.target === streamlineVersionsModal) closeModal('streamline-versions-modal');
         if (e.target === optiscalerModal) closeModal('optiscaler-modal');
         if (e.target === confirmModal) closeModal('confirm-modal');
         if (e.target === manageModal) closeModal('manage-modal');
-        if (e.target === optiscalerVersionsModal) closeModal('optiscaler-versions-modal');
-        if (e.target === optipatcherVersionsModal) closeModal('optipatcher-versions-modal');
-        if (e.target === fsr4VersionsModal) closeModal('fsr4-versions-modal');
         if (e.target === uninstallModal) closeModal('uninstall-modal');
         if (e.target === dlssConfirmModal) closeModal('dlss-confirm-modal');
         if (e.target === infoModal) closeModal('info-modal');
+        if (e.target === exePickerModal) closeModal('exe-picker-modal');
         if (e.target === uninstallConfirmModal) closeModal('uninstall-confirm-modal');
         if (e.target === refreshConfirmModal) closeModal('refresh-confirm-modal');
         if (e.target === scanProgressModal) closeModal('scan-progress-modal');
-        if (e.target === manualAddModal) closeModal('manual-add-modal');
+        if (e.target === manualAddModal) {
+            if (_manualAddCloseGuard) {
+                _manualAddCloseGuard();
+            } else {
+                closeModal('manual-add-modal');
+            }
+        }
         // settings-modal: guard üzerinden geç
         if (e.target === settingsModal) {
             if (_settingsCloseGuard) {
@@ -120,4 +123,58 @@ export function initBaseModals() {
             }
         });
     }
+
+    // manual-add-modal X butonu: guard üzerinden geç
+    const manualAddCloseBtn = manualAddModal ? manualAddModal.querySelector('.close-modal') : null;
+    if (manualAddCloseBtn) {
+        manualAddCloseBtn.addEventListener('click', () => {
+            if (_manualAddCloseGuard) {
+                _manualAddCloseGuard();
+            } else {
+                closeModal('manual-add-modal');
+            }
+        });
+    }
 };
+
+export function showNotification(title, message, duration = 5000) {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = 'toast-notification';
+    toast.style.pointerEvents = 'auto';
+
+    toast.innerHTML = `
+        <div class="toast-header">
+            <span class="toast-title">
+                🔔 ${title}
+            </span>
+            <button class="toast-close">&times;</button>
+        </div>
+        <div class="toast-body">
+            ${message}
+        </div>
+    `;
+
+    container.appendChild(toast);
+    
+    // Trigger animation
+    setTimeout(() => {
+        toast.classList.add('show');
+    }, 50);
+
+    let dismissTimeout = setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 400);
+    }, duration);
+
+    const closeBtn = toast.querySelector('.toast-close');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+            clearTimeout(dismissTimeout);
+            toast.classList.remove('show');
+            setTimeout(() => toast.remove(), 400);
+        });
+    }
+}

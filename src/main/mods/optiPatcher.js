@@ -39,11 +39,18 @@ async function getOptiPatcherReleases() {
         if (!response.ok) throw new Error(`GitHub API HTTP error: ${response.status}`);
         const releases = await response.json();
 
-        const mappedReleases = releases.slice(0, 10).map(r => ({
-            name: r.name || r.tag_name,
-            tag:  r.tag_name,
-            downloadUrl: r.assets.find(a => a.name.toLowerCase().endsWith('.asi'))?.browser_download_url
-        }));
+        const mappedReleases = [];
+        for (const r of releases.slice(0, 10)) {
+            const asset = r.assets && r.assets.find(a => a.name.toLowerCase().endsWith('.asi'));
+            if (!asset) continue;
+            mappedReleases.push({
+                name: r.name || r.tag_name,
+                tag:  r.tag_name,
+                downloadUrl: asset.browser_download_url,
+                size: asset.size,
+                publishedAt: r.published_at
+            });
+        }
 
         releaseCache.writeCache(MOD_NAME, mappedReleases);
         const fetchedAt = Date.now();

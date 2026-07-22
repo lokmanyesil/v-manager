@@ -77,7 +77,9 @@ async function getFsr4Releases() {
             mappedReleases.push({
                 name: r.name || r.tag_name,
                 tag:  r.tag_name,
-                downloadUrl: asset.browser_download_url
+                downloadUrl: asset.browser_download_url,
+                size: asset.size,
+                publishedAt: r.published_at
             });
         }
 

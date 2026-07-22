@@ -137,9 +137,9 @@ function isIgnoredGame(game) {
 async function detectUpscalers(gamePath) {
     const result = {
         dlss: false, xess: false, fsr: false,
-        dlssEnabler: false, optiscaler: false, streamline: false,
-        dlssEnablerVersion: null, optiscalerVersion: null, streamlineVersion: null,
-        dlssEnablerPath: null, optiscalerPath: null, optiscalerInjection: null,
+        dlssEnabler: false, optiscaler: false, streamline: false, optibuilder: false,
+        dlssEnablerVersion: null, optiscalerVersion: null, streamlineVersion: null, optiBuilderVersion: null,
+        dlssEnablerPath: null, optiscalerPath: null, optiscalerInjection: null, optiBuilderPath: null, optiBuilderInjection: null,
         streamlinePath: null, streamlineDepth: -1
     };
     if (!fs.existsSync(gamePath)) return result;
@@ -202,17 +202,31 @@ async function detectUpscalers(gamePath) {
                             const ver = await utils.getFileVersion(path.join(current.path, file.name));
                             if (ver) result.streamlineVersion = ver;
                         }
-                    } else if (injectionDllNames.includes(nameLow)) {
+                    } else if (injectionDllNames.includes(nameLow) || nameLow === 'optiscaler.dll') {
                         const filePath = path.join(current.path, file.name);
                         const desc = await utils.getFileDescription(filePath);
                         const descLow = desc.toLowerCase();
                         if (descLow.includes('optiscaler')) {
-                            result.optiscaler = true;
-                            result.optiscalerPath = current.path;
-                            result.optiscalerInjection = file.name;
-                            if (!result.optiscalerVersion) {
-                                const ver = await utils.getFileVersion(filePath);
-                                if (ver) result.optiscalerVersion = ver;
+                            const ver = await utils.getFileVersion(filePath);
+                            const isOptiBuilder = ver && ver.trim().startsWith('0.10');
+                            if (isOptiBuilder) {
+                                result.optibuilder = true;
+                                result.optiBuilderPath = current.path;
+                                result.optiBuilderInjection = file.name;
+                                result.optiBuilderVersion = ver;
+                                result.optiscaler = false;
+                                result.optiscalerPath = null;
+                                result.optiscalerInjection = null;
+                                result.optiscalerVersion = null;
+                            } else {
+                                result.optiscaler = true;
+                                result.optiscalerPath = current.path;
+                                result.optiscalerInjection = file.name;
+                                result.optiscalerVersion = ver || null;
+                                result.optibuilder = false;
+                                result.optiBuilderPath = null;
+                                result.optiBuilderInjection = null;
+                                result.optiBuilderVersion = null;
                             }
                         } else if (descLow.includes('dlss enabler for dx12 gpus') || descLow.includes('dlss enabler')) {
                             result.dlssEnabler = true;
@@ -439,6 +453,11 @@ async function processAndStreamGame(game, event, scanSettings) {
         existingGame.optiscalerPath = detectedUpscalers.optiscalerPath || null;
         existingGame.optiscalerInjection = detectedUpscalers.optiscalerInjection || null;
 
+        existingGame.hasOptiBuilder = detectedUpscalers.optibuilder;
+        existingGame.optiBuilderVersion = detectedUpscalers.optiBuilderVersion || null;
+        existingGame.optiBuilderPath = detectedUpscalers.optiBuilderPath || null;
+        existingGame.optiBuilderInjection = detectedUpscalers.optiBuilderInjection || null;
+
         // Merge upscalers object fields safely
         existingGame.upscalers = {
             dlss: detectedUpscalers.dlss || (existingGame.upscalers && existingGame.upscalers.dlss) || false,
@@ -446,6 +465,7 @@ async function processAndStreamGame(game, event, scanSettings) {
             fsr: detectedUpscalers.fsr || (existingGame.upscalers && existingGame.upscalers.fsr) || false,
             dlssEnabler: existingGame.hasDlssEnabler,
             optiscaler: existingGame.hasOptiscaler,
+            optibuilder: existingGame.hasOptiBuilder,
             streamline: existingGame.hasStreamline
         };
 
@@ -491,16 +511,21 @@ async function processAndStreamGame(game, event, scanSettings) {
             launcherId: game.id || null,
             hasDlssEnabler: detectedUpscalers.dlssEnabler,
             hasOptiscaler: detectedUpscalers.optiscaler || false,
+            hasOptiBuilder: detectedUpscalers.optibuilder || false,
             hasStreamline: detectedUpscalers.streamline || false,
             dlssEnablerVersion: detectedUpscalers.dlssEnablerVersion,
             dlssEnablerPath: detectedUpscalers.dlssEnablerPath || null,
             optiscalerVersion: detectedUpscalers.optiscalerVersion,
             optiscalerPath: detectedUpscalers.optiscalerPath || null,
+            optiscalerInjection: detectedUpscalers.optiscalerInjection || null,
+            optiBuilderVersion: detectedUpscalers.optiBuilderVersion || null,
+            optiBuilderPath: detectedUpscalers.optiBuilderPath || null,
+            optiBuilderInjection: detectedUpscalers.optiBuilderInjection || null,
             streamlineVersion: detectedUpscalers.streamlineVersion,
             streamlinePath: detectedUpscalers.streamlinePath,
             streamlineHashes: {},
             streamlineModVersion: null,
-            upscalers: detectedUpscalers,
+            upscalers: { ...detectedUpscalers },
             isFavorite: isFavorite
         };
 
@@ -991,12 +1016,10 @@ async function runScan(event, scanSettings) {
 
     const progressTracker = { total: 0, current: 0 };
 
-    // Disk'ten mevcut veriyi belleğe yükle (veriyi koruma amaçlı)
-    config.loadExistingGames();
-
-    // Filtre: Yoksayılan oyunları listeden temizle (kara listedekiler, launcher'lar vb.)
-    const filteredInitialGames = config.getExistingGamesState().filter(g => !isIgnoredGame(g));
-    config.setExistingGamesState(filteredInitialGames);
+    // Clear games.json completely before scanning starts
+    console.log('[SCANNER] Clearing games.json completely at scan start.');
+    config.setExistingGamesState([]);
+    config.saveGamesState();
 
     // KURAL 2: Kaynak Filtresi — sadece seçili platformları tara
     const sources = scanSettings?.sources || ['Steam', 'Epic', 'GOG', 'EA', 'Ubisoft', 'Xbox'];

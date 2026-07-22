@@ -131,7 +131,85 @@ async function uninstallMod({ gameName, exePath, mod }) {
             dbGame.hasOptiscaler = false;
             dbGame.optiscalerVersion = null;
             dbGame.optiscalerInjection = null;
-            if (dbGame.upscalers) dbGame.upscalers.optiscaler = false;
+            dbGame.optiscalerPath = null;
+            dbGame.hasOptiBuilder = false;
+            dbGame.optiBuilderVersion = null;
+            dbGame.optiBuilderInjection = null;
+            dbGame.optiBuilderPath = null;
+            if (dbGame.upscalers) {
+                dbGame.upscalers.optiscaler = false;
+                dbGame.upscalers.optibuilder = false;
+            }
+            config.saveGamesState();
+        }
+
+        return { success: true, deleted, skipped, games: config.getExistingGamesState() };
+    }
+
+    // ── OptiBuilder Uninstall ──────────────────────────────────────────────────
+    if (mod === 'OptiBuilder') {
+        const OPTI_UNIQUE_FILES = [
+            'OptiScaler.ini',
+            'nvapi.dll',
+            'nvapi64.dll',
+            'OptiMX.log',
+            'setup_linux.sh',
+            'setup_windows.bat',
+            'fakenvapi.dll',
+            'fakenvapi.ini',
+            'dlssg_to_fsr3_amd_is_better.dll',
+            '!! README_EXTRACT ALL FILES TO GAME FOLDER !!.txt'
+        ];
+
+        for (const fileName of OPTI_UNIQUE_FILES) {
+            const matches = findFileInDir(gameDir, fileName);
+            for (const filePath of matches) {
+                try { fs.unlinkSync(filePath); deleted++; } catch(e) { skipped++; }
+            }
+        }
+
+        // Deletes both D3D12_OptiScaler and OptiScaler directories
+        const OPTI_UNIQUE_DIRS = ['D3D12_OptiScaler', 'OptiScaler'];
+        for (const dirName of OPTI_UNIQUE_DIRS) {
+            const dirPath = path.join(gameDir, dirName);
+            if (fs.existsSync(dirPath)) {
+                try {
+                    fs.rmSync(dirPath, { recursive: true, force: true });
+                    deleted++;
+                } catch(e) {
+                    skipped++;
+                }
+            }
+        }
+
+        for (const dllName of injectionDllNames) {
+            const matches = findFileInDir(gameDir, dllName);
+            for (const dllPath of matches) {
+                const isOpti = await utils.isOptiScalerFile(dllPath);
+                if (isOpti) {
+                    try {
+                        fs.unlinkSync(dllPath);
+                        deleted++;
+                    } catch(e) {
+                        skipped++;
+                    }
+                }
+            }
+        }
+
+        if (dbGame) {
+            dbGame.hasOptiBuilder = false;
+            dbGame.optiBuilderVersion = null;
+            dbGame.optiBuilderInjection = null;
+            dbGame.optiBuilderPath = null;
+            dbGame.hasOptiscaler = false;
+            dbGame.optiscalerVersion = null;
+            dbGame.optiscalerInjection = null;
+            dbGame.optiscalerPath = null;
+            if (dbGame.upscalers) {
+                dbGame.upscalers.optibuilder = false;
+                dbGame.upscalers.optiscaler = false;
+            }
             config.saveGamesState();
         }
 

@@ -58,6 +58,17 @@ export function setLanguage(lang) {
     applyTranslations();
     // Update html lang attribute
     document.documentElement.lang = lang;
+    
+    // Sync language choice to settings.json
+    if (window.electronAPI && window.electronAPI.getSettings && window.electronAPI.saveSettings) {
+        window.electronAPI.getSettings().then(settings => {
+            if (settings.language !== lang) {
+                settings.language = lang;
+                window.electronAPI.saveSettings(settings);
+            }
+        }).catch(err => console.error('Failed to sync language to settings:', err));
+    }
+
     // Dispatch event so any module can react
     document.dispatchEvent(new CustomEvent('language-changed', { detail: { lang } }));
 }
@@ -99,4 +110,14 @@ export function initI18n() {
     // Ensure HTML lang matches
     document.documentElement.lang = currentLang;
     applyTranslations();
+    
+    // Sync language choice to settings.json on startup
+    if (window.electronAPI && window.electronAPI.getSettings && window.electronAPI.saveSettings) {
+        window.electronAPI.getSettings().then(settings => {
+            if (settings.language !== currentLang) {
+                settings.language = currentLang;
+                window.electronAPI.saveSettings(settings);
+            }
+        }).catch(err => console.error('Failed to sync language to settings on init:', err));
+    }
 }

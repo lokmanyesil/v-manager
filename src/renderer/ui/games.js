@@ -1,9 +1,9 @@
 import { state } from '../state.js';
-import { openModal, closeModal } from './modals/base.js';
+import { openModal, closeModal, setManualAddCloseGuard } from './modals/base.js';
 import { showConfirmModal } from './blacklist.js';
 import { openUpdateModal } from './modals/update.js';
 import { openSettingsModal } from './modals/settings.js';
-import { showInfoModal, showLauncherWarningModal } from './modals/info.js';
+import { showInfoModal, showLauncherWarningModal, showConfirmDialog } from './modals/info.js';
 import { t } from '../i18n/i18n.js';
 
 // Get elements helper to ensure they exist before use
@@ -31,7 +31,11 @@ export function createGameCard(game) {
         modTagsHtml += `<div class="dlss-tag" style="bottom: ${currentBottom}px;">DLSS Enabler${dlssVerText}</div>`;
         currentBottom += 34;
     }
-    if (game.hasOptiscaler) {
+    if (game.hasOptiBuilder) {
+        const optiVerText = game.optiBuilderVersion ? ` ${game.optiBuilderVersion}` : '';
+        modTagsHtml += `<div class="dlss-tag" style="background: rgba(245,158,11,0.92); border: 1px solid rgba(245,158,11,0.5); box-shadow: 0 0 10px rgba(245,158,11,0.3); bottom: ${currentBottom}px;">OptiBuilder${optiVerText}</div>`;
+        currentBottom += 34;
+    } else if (game.hasOptiscaler) {
         const optiVerText = game.optiscalerVersion ? ` ${game.optiscalerVersion}` : '';
         modTagsHtml += `<div class="dlss-tag" style="background: rgba(245,158,11,0.92); border: 1px solid rgba(245,158,11,0.5); box-shadow: 0 0 10px rgba(245,158,11,0.3); bottom: ${currentBottom}px;">OptiScaler${optiVerText}</div>`;
         currentBottom += 34;
@@ -73,8 +77,8 @@ export function createGameCard(game) {
                 <div class="game-actions-wrapper">
                     <button class="game-launch-btn" data-game="${game.name}"> ${t('games.launchGame')}</button>
                     <button class="mod-install-btn" data-game="${game.name}">${t('games.installMod')}</button>
-                    ${(game.hasDlssEnabler || game.hasStreamline || game.hasOptiscaler) ? `<button class="mod-manage-btn" data-game="${game.name}">${t('games.manageMod')}</button>` : ''}
-                    ${(game.hasDlssEnabler || game.hasOptiscaler) ? `<button class="mod-settings-btn" data-game="${game.name}">${t('games.modSettings')}</button>` : ''}
+                    ${(game.hasDlssEnabler || game.hasStreamline || game.hasOptiscaler || game.hasOptiBuilder) ? `<button class="mod-manage-btn" data-game="${game.name}">${t('games.manageMod')}</button>` : ''}
+                    ${(game.hasDlssEnabler || game.hasOptiscaler || game.hasOptiBuilder) ? `<button class="mod-settings-btn" data-game="${game.name}">${t('games.modSettings')}</button>` : ''}
                 </div>
                 <button class="remove-game-btn" data-game="${game.name}">${t('games.removeGame')}</button>
             </div>
@@ -160,18 +164,43 @@ export function createGameCard(game) {
         });
     }
 
-    // Add verified compatibility badge if developer-supported
+    // Add verified compatibility badge if developer-supported or DLSS Enabler supported
     const normKey = game.name
         .toLowerCase()
         .replace(/[^a-z0-9\s]/g, '')
         .trim()
         .replace(/\s+/g, '-');
 
-    if (window.electronAPI && window.electronAPI.getDeveloperGames) {
-        window.electronAPI.getDeveloperGames().then(devGames => {
-            if (devGames && devGames[normKey]) {
-                const devGameInfo = devGames[normKey];
-                const compatibility = devGameInfo.compatibility || 'green';
+    if (window.electronAPI) {
+        const getDev = window.electronAPI.getDeveloperGames ? window.electronAPI.getDeveloperGames() : Promise.resolve({});
+        const getDlss = window.electronAPI.getDlssEnablerGames ? window.electronAPI.getDlssEnablerGames() : Promise.resolve({});
+
+        Promise.all([getDev, getDlss]).then(([devGames, dlssGamesRaw]) => {
+            const dlssGames = {};
+            if (dlssGamesRaw) {
+                for (const name of Object.keys(dlssGamesRaw)) {
+                    const normalized = name
+                        .toLowerCase()
+                        .replace(/[^a-z0-9\s]/g, '')
+                        .trim()
+                        .replace(/\s+/g, '-');
+                    dlssGames[normalized] = dlssGamesRaw[name];
+                }
+            }
+
+            const isDlssSupported = dlssGames && dlssGames[normKey];
+            const isDevSupported = devGames && devGames[normKey];
+
+            if (isDlssSupported) {
+                card.classList.add('dlss-supported');
+            }
+
+            if (isDlssSupported || isDevSupported) {
+                let compatibility = 'green';
+                if (!isDlssSupported && isDevSupported) {
+                    compatibility = devGames[normKey].compatibility || 'green';
+                }
+
                 const tooltipText = compatibility === 'green'
                     ? t('settings.tooltipGreen')
                     : t('settings.tooltipYellow');
@@ -214,7 +243,7 @@ export function createGameCard(game) {
                 }
             }
         }).catch(err => {
-            console.error("Error loading developer games inside card:", err);
+            console.error("Error loading games support data inside card:", err);
         });
     }
 
@@ -286,7 +315,32 @@ export function renderGames(games) {
 }
 
 export async function updateHomeStats() {
-    // Stats cards have been replaced with social media links.
+    try {
+        const games = await window.electronAPI.getGames();
+        const totalGames = games ? games.length : 0;
+        
+        let moddedGames = 0;
+        if (games) {
+            games.forEach(g => {
+                if (g.hasDlssEnabler || g.hasOptiscaler || g.hasOptiBuilder || g.hasStreamline) {
+                    moddedGames++;
+                }
+            });
+        }
+        
+        const totalGamesEl = document.getElementById('home-stat-games-count');
+        const moddedGamesEl = document.getElementById('home-stat-mods-count');
+        if (totalGamesEl) totalGamesEl.textContent = totalGames;
+        if (moddedGamesEl) moddedGamesEl.textContent = moddedGames;
+        
+        if (window.electronAPI.getAppVersion) {
+            const version = await window.electronAPI.getAppVersion();
+            const versionEl = document.getElementById('home-stat-version-value');
+            if (versionEl) versionEl.textContent = `v${version}`;
+        }
+    } catch (err) {
+        console.error('Failed to update home stats:', err);
+    }
 }
 
 export async function initGames() {
@@ -775,11 +829,23 @@ export function initGamesListeners() {
         });
     }
 
+    const handleManualAddCloseAttempt = async () => {
+        const confirmed = await showConfirmDialog(
+            t('manualAdd.cancelConfirmTitle') || 'Emin misiniz?',
+            t('manualAdd.cancelConfirmMessage') || 'Yaptığınız değişiklikler kaydedilmeyecektir. Onaylıyor musunuz?'
+        );
+        if (confirmed) {
+            closeModal('manual-add-modal');
+            pendingManualResult = null;
+        }
+    };
+
+    setManualAddCloseGuard(handleManualAddCloseAttempt);
+
     if (manualAddCancelBtn) {
         manualAddCancelBtn.addEventListener('click', () => {
             window.electronAPI.logToMain('Manual add canceled');
-            closeModal('manual-add-modal');
-            pendingManualResult = null;
+            handleManualAddCloseAttempt();
         });
     }
 

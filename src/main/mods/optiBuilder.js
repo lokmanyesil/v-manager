@@ -8,7 +8,7 @@ const { path7za } = require('7zip-bin');
 const config = require('../config');
 const releaseCache = require('./releaseCache');
 
-const MOD_NAME = 'optiscaler';
+const MOD_NAME = 'optibuilder';
 
 async function extractArchive(archivePath, targetDir) {
     const lower = archivePath.toLowerCase();
@@ -28,21 +28,19 @@ async function extractArchive(archivePath, targetDir) {
 }
 const utils = require('../utils');
 const scanner = require('../scanner');
-const optiPatcher = require('./optiPatcher');
-const fsr4Files = require('./fsr4Files');
 
-async function getOptiScalerReleases(forceRefresh = false) {
+async function getOptiBuilderReleases(forceRefresh = false) {
     if (forceRefresh) {
         releaseCache.clearCache(MOD_NAME);
     }
     // --- Disk cache kontrolü ---
     if (!forceRefresh && releaseCache.isCacheValid(MOD_NAME)) {
-        console.log('[OPTISCALER] Disk cache geçerli, döndürülüyor.');
+        console.log('[OPTIBUILDER] Disk cache geçerli, döndürülüyor.');
         const cached = releaseCache.readCache(MOD_NAME);
         return {
             fetchedAt: cached.fetchedAt,
             releases: cached.releases.map(r => {
-                const targetDir = path.join(config.modsPath, 'optiscaler', r.tag);
+                const targetDir = path.join(config.modsPath, 'optibuilder', r.tag);
                 let installed = false;
                 if (fs.existsSync(targetDir)) {
                     try { installed = fs.readdirSync(targetDir).length > 0; } catch (e) {}
@@ -53,7 +51,7 @@ async function getOptiScalerReleases(forceRefresh = false) {
     }
 
     try {
-        const response = await fetch('https://api.github.com/repos/optiscaler/OptiScaler/releases', {
+        const response = await fetch('https://api.github.com/repos/vuenxx/extra_newrepo/releases', {
             headers: { 'User-Agent': 'vuenxxFG' }
         });
 
@@ -92,7 +90,7 @@ async function getOptiScalerReleases(forceRefresh = false) {
         return {
             fetchedAt,
             releases: mappedReleases.map(r => {
-                const targetDir = path.join(config.modsPath, 'optiscaler', r.tag);
+                const targetDir = path.join(config.modsPath, 'optibuilder', r.tag);
                 let installed = false;
                 if (fs.existsSync(targetDir)) {
                     try { installed = fs.readdirSync(targetDir).length > 0; } catch (e) {}
@@ -101,16 +99,16 @@ async function getOptiScalerReleases(forceRefresh = false) {
             })
         };
     } catch (e) {
-        console.error('[OPTISCALER] Fetch hatası:', e.message);
+        console.error('[OPTIBUILDER] Fetch hatası:', e.message);
         // Stale cache fallback
         const stale = releaseCache.readCache(MOD_NAME);
         if (stale) {
-            console.log('[OPTISCALER] Stale cache fallback kullanılıyor.');
+            console.log('[OPTIBUILDER] Stale cache fallback kullanılıyor.');
             return {
                 fetchedAt: stale.fetchedAt,
                 fromStaleCache: true,
                 releases: stale.releases.map(r => {
-                    const targetDir = path.join(config.modsPath, 'optiscaler', r.tag);
+                    const targetDir = path.join(config.modsPath, 'optibuilder', r.tag);
                     let installed = false;
                     if (fs.existsSync(targetDir)) {
                         try { installed = fs.readdirSync(targetDir).length > 0; } catch (err) {}
@@ -123,10 +121,10 @@ async function getOptiScalerReleases(forceRefresh = false) {
     }
 }
 
-async function downloadOptiScalerVersion(event, tag, downloadUrl) {
+async function downloadOptiBuilderVersion(event, tag, downloadUrl) {
     if (!downloadUrl) throw new Error("İndirme linki bulunamadı.");
 
-    const targetDir = path.join(config.modsPath, 'optiscaler', tag);
+    const targetDir = path.join(config.modsPath, 'optibuilder', tag);
 
     // Already downloaded? Check for critical file
     if (fs.existsSync(targetDir)) {
@@ -140,7 +138,7 @@ async function downloadOptiScalerVersion(event, tag, downloadUrl) {
 
     const is7z = downloadUrl.toLowerCase().endsWith('.7z');
     const ext = is7z ? '.7z' : '.zip';
-    const tempZipPath = path.join(app.getPath('temp'), `optiscaler_${tag.replace(/[^a-z0-9.-]/gi, '_')}${ext}`);
+    const tempZipPath = path.join(app.getPath('temp'), `optibuilder_${tag.replace(/[^a-z0-9.-]/gi, '_')}${ext}`);
 
     const zipResponse = await fetch(downloadUrl);
     if (!zipResponse.ok) throw new Error(`Download failed: ${zipResponse.status}`);
@@ -154,10 +152,9 @@ async function downloadOptiScalerVersion(event, tag, downloadUrl) {
         if (done) break;
         chunks.push(value);
         receivedLength += value.length;
-        // FIX 4c: Guard against null/destroyed event.sender before sending progress
         if (contentLength && event && event.sender && !event.sender.isDestroyed()) {
             const percent = Math.round((receivedLength / contentLength) * 100);
-            event.sender.send('optiscaler-download-progress', { percent });
+            event.sender.send('optibuilder-download-progress', { percent });
         }
     }
     const buffer = Buffer.concat(chunks.map(c => Buffer.from(c)));
@@ -165,11 +162,9 @@ async function downloadOptiScalerVersion(event, tag, downloadUrl) {
 
     if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
 
-    // FIX 4c: Guard event.sender before extracting progress event
     if (event && event.sender && !event.sender.isDestroyed()) {
-        event.sender.send('optiscaler-download-progress', { percent: 100, stage: 'extracting' });
+        event.sender.send('optibuilder-download-progress', { percent: 100, stage: 'extracting' });
     }
-    // Extract using extractArchive
     await extractArchive(tempZipPath, targetDir);
 
     try { fs.unlinkSync(tempZipPath); } catch (e) { }
@@ -177,15 +172,14 @@ async function downloadOptiScalerVersion(event, tag, downloadUrl) {
     return { success: true, targetDir };
 }
 
-async function downloadOptiScalerRelease(event, { tag, downloadUrl }) {
+async function downloadOptiBuilderRelease(event, { tag, downloadUrl }) {
     try {
         if (!downloadUrl) throw new Error("İndirme linki bulunamadı.");
 
-        const targetDir = path.join(config.modsPath, 'optiscaler', tag);
+        const targetDir = path.join(config.modsPath, 'optibuilder', tag);
 
         if (fs.existsSync(targetDir)) {
             try {
-                // FIX 4d: Same critical file check as in installOptiScaler
                 const criticalFiles = ['OptiScaler.dll', 'OptiScaler.ini'];
                 const dirFiles = fs.readdirSync(targetDir).map(f => f.toLowerCase());
                 const hasCritical = criticalFiles.some(cf => dirFiles.includes(cf.toLowerCase()));
@@ -195,7 +189,7 @@ async function downloadOptiScalerRelease(event, { tag, downloadUrl }) {
 
         const is7z = downloadUrl.toLowerCase().endsWith('.7z');
         const ext = is7z ? '.7z' : '.zip';
-        const tempZipPath = path.join(app.getPath('temp'), `optiscaler_${tag.replace(/[^a-z0-9.-]/gi, '_')}${ext}`);
+        const tempZipPath = path.join(app.getPath('temp'), `optibuilder_${tag.replace(/[^a-z0-9.-]/gi, '_')}${ext}`);
 
         const zipResponse = await fetch(downloadUrl);
         if (!zipResponse.ok) throw new Error(`Download failed: ${zipResponse.status}`);
@@ -210,10 +204,9 @@ async function downloadOptiScalerRelease(event, { tag, downloadUrl }) {
             if (done) break;
             chunks.push(value);
             receivedLength += value.length;
-            // FIX 4c: Guard against null/destroyed event.sender
             if (contentLength && event && event.sender && !event.sender.isDestroyed()) {
                 const percent = Math.round((receivedLength / contentLength) * 100);
-                event.sender.send('optiscaler-download-progress', { percent });
+                event.sender.send('optibuilder-download-progress', { percent });
             }
         }
 
@@ -224,11 +217,9 @@ async function downloadOptiScalerRelease(event, { tag, downloadUrl }) {
             fs.mkdirSync(targetDir, { recursive: true });
         }
 
-        // FIX 4c: Guard event.sender before extracting progress event
         if (event && event.sender && !event.sender.isDestroyed()) {
-            event.sender.send('optiscaler-download-progress', { percent: 100, stage: 'extracting' });
+            event.sender.send('optibuilder-download-progress', { percent: 100, stage: 'extracting' });
         }
-        // Extract using extractArchive
         await extractArchive(tempZipPath, targetDir);
 
         try {
@@ -242,17 +233,16 @@ async function downloadOptiScalerRelease(event, { tag, downloadUrl }) {
     }
 }
 
-async function installOptiScaler(event, { game, version, tag, downloadUrl, injection, isAuto, installOptiPatcher, optiPatcherTag, optiPatcherUrl, installFsr4, fsr4Name, fsr4Url }) {
-    console.log(`[OPTISCALER] Kurulum başlatıldı. Oyun: ${game.name}, Tag: ${tag}, Injection: ${injection}, Auto: ${isAuto}`);
+async function installOptiBuilder(event, { game, version, tag, downloadUrl, injection, isAuto }) {
+    console.log(`[OPTIBUILDER] Kurulum başlatıldı. Oyun: ${game.name}, Tag: ${tag}, Injection: ${injection}, Auto: ${isAuto}`);
     try {
         let targetExeDir = '';
         const normTargetName = game.name.toLowerCase().replace(/[^a-z0-9]/g, '');
 
         if (isAuto) {
-            // --- Resolve target paths via the dual-layer system ---
             const paths = config.getGamePaths(game.name, game.exePath);
             if (!paths) {
-                console.error(`[OPTISCALER] Hata: Yol bulunamadı.`);
+                console.error(`[OPTIBUILDER] Hata: Yol bulunamadı.`);
                 return { success: false, error: 'Bu oyun için yol bulunamadı. Lütfen Ayarlar → "Kullanıcı Oyun Yolları" bölümünden oyunun ana klasörünü ve EXE yolunu tanımlayın ya da Manuel Kur seçeneğini kullanın.' };
             }
 
@@ -265,7 +255,7 @@ async function installOptiScaler(event, { game, version, tag, downloadUrl, injec
             }
 
             targetExeDir = path.dirname(exePathResolved);
-            console.log(`[OPTISCALER] Hedef EXE klasörü: ${targetExeDir} (kaynak: ${paths.source})`);
+            console.log(`[OPTIBUILDER] Hedef EXE klasörü: ${targetExeDir} (kaynak: ${paths.source})`);
         } else {
             targetExeDir = path.dirname(game.exePath);
         }
@@ -285,17 +275,15 @@ async function installOptiScaler(event, { game, version, tag, downloadUrl, injec
             return { success: false, error: 'Oyun şu an açık. Lütfen oyunu kapatıp tekrar deneyin.' };
         }
 
-        const versionDir = path.join(config.modsPath, 'optiscaler', tag);
+        const versionDir = path.join(config.modsPath, 'optibuilder', tag);
         let alreadyDownloaded = false;
         if (fs.existsSync(versionDir)) {
             try {
-                // FIX 4d: Check for a critical file (OptiScaler.dll or OptiScaler.ini), not just
-                // any files in the directory. A partial extract may leave behind some files.
                 const criticalFiles = ['OptiScaler.dll', 'OptiScaler.ini'];
                 const dirFiles = fs.readdirSync(versionDir).map(f => f.toLowerCase());
                 const hasCritical = criticalFiles.some(cf => dirFiles.includes(cf.toLowerCase()));
                 if (hasCritical) alreadyDownloaded = true;
-                else console.log(`[OPTISCALER] Klasör mevcut ama kritik dosyalar eksik — yeniden indirilecek.`);
+                else console.log(`[OPTIBUILDER] Klasör mevcut ama kritik dosyalar eksik — yeniden indirilecek.`);
             } catch (e) { }
         }
 
@@ -303,18 +291,17 @@ async function installOptiScaler(event, { game, version, tag, downloadUrl, injec
             if (!downloadUrl) {
                 return { success: false, error: 'Bu sürüm henüz indirilmemiş ve indirme linki bulunamadı.' };
             }
-            const dlResult = await downloadOptiScalerVersion(event, tag, downloadUrl);
+            const dlResult = await downloadOptiBuilderVersion(event, tag, downloadUrl);
             if (!dlResult.success) {
-                console.error(`[OPTISCALER] İndirme hatası:`, dlResult.error);
+                console.error(`[OPTIBUILDER] İndirme hatası:`, dlResult.error);
                 throw new Error(dlResult.error || 'İndirme başarısız.');
             }
         }
 
-        console.log(`[OPTISCALER] Dosyalar kopyalanıyor...`);
+        console.log(`[OPTIBUILDER] Dosyalar kopyalanıyor...`);
         await utils.copyDir(versionDir, targetExeDir);
 
-        // FIX 4a: Conflict check — verify no other mod's DLLs were silently overwritten
-        // (OptiScaler replaces injection DLLs like dxgi.dll; check they belong to OptiScaler)
+        // Conflict check — verify no other mod's DLLs were silently overwritten
         const injectionDllNames = ['dxgi.dll', 'winmm.dll', 'd3d12.dll', 'dbghelp.dll', 'version.dll', 'wininet.dll', 'winhttp.dll'];
         for (const dllName of injectionDllNames) {
             const dllPath = path.join(targetExeDir, dllName);
@@ -322,24 +309,23 @@ async function installOptiScaler(event, { game, version, tag, downloadUrl, injec
                 const desc = await utils.getFileDescription(dllPath);
                 const descLow = desc.toLowerCase();
                 if (!descLow.includes('optiscaler') && desc !== '') {
-                    console.warn(`[OPTISCALER] Üyarı: ${dllName} dosyası OptiScaler'sız bir mod ile ezilebilmiş olabilir (Desc: ${desc})`);
+                    console.warn(`[OPTIBUILDER] Uyarı: ${dllName} dosyası OptiScaler'sız bir mod ile ezilebilmiş olabilir (Desc: ${desc})`);
                 }
             }
         }
 
         const optiDllSrc = path.join(targetExeDir, 'OptiScaler.dll');
         if (fs.existsSync(optiDllSrc) && injection && injection !== 'OptiScaler.dll') {
-            console.log(`[OPTISCALER] DLL ismi değiştiriliyor: OptiScaler.dll -> ${injection}`);
+            console.log(`[OPTIBUILDER] DLL ismi değiştiriliyor: OptiScaler.dll -> ${injection}`);
             const targetDllPath = path.join(targetExeDir, injection);
             if (fs.existsSync(targetDllPath)) {
                 fs.unlinkSync(targetDllPath);
             }
-            // FIX 4b: fs.renameSync fails across different drives. Use copy+delete as fallback.
             try {
                 fs.renameSync(optiDllSrc, targetDllPath);
             } catch (renameErr) {
                 if (renameErr.code === 'EXDEV') {
-                    console.log(`[OPTISCALER] Cross-drive rename tespit edildi, kopyalama + silme yöntemi kullanılıyor.`);
+                    console.log(`[OPTIBUILDER] Cross-drive rename tespit edildi, kopyalama + silme yöntemi kullanılıyor.`);
                     fs.copyFileSync(optiDllSrc, targetDllPath);
                     fs.unlinkSync(optiDllSrc);
                 } else {
@@ -348,11 +334,10 @@ async function installOptiScaler(event, { game, version, tag, downloadUrl, injec
             }
         }
 
-        console.log(`[OPTISCALER] Kurulum başarıyla tamamlandı.`);
+        console.log(`[OPTIBUILDER] Kurulum başarıyla tamamlandı.`);
         const existingGamesState = config.getExistingGamesState();
         let dbGame = existingGamesState.find(g => g.name.toLowerCase().replace(/[^a-z0-9]/g, '') === normTargetName);
 
-        // Resolve the correct game_root before updating dbGame.exePath or saving to user-games.json
         const resolvedGameRoot = config.resolveActualGameRoot(game.name, game.exePath) || path.dirname(game.exePath);
 
         if (!dbGame && !isAuto) {
@@ -365,20 +350,20 @@ async function installOptiScaler(event, { game, version, tag, downloadUrl, injec
             }, null);
         }
         if (dbGame) {
-            dbGame.hasOptiscaler = true;
-            dbGame.optiscalerVersion = tag;
-            dbGame.optiscalerInjection = injection;
-            dbGame.optiscalerPath = targetExeDir;
+            dbGame.hasOptiBuilder = true;
+            dbGame.optiBuilderVersion = tag;
+            dbGame.optiBuilderInjection = injection;
+            dbGame.optiBuilderPath = targetExeDir;
 
-            // Clear/reset OptiBuilder fields
-            dbGame.hasOptiBuilder = false;
-            dbGame.optiBuilderVersion = null;
-            dbGame.optiBuilderInjection = null;
-            dbGame.optiBuilderPath = null;
+            // Clear/reset standard OptiScaler fields
+            dbGame.hasOptiscaler = false;
+            dbGame.optiscalerVersion = null;
+            dbGame.optiscalerInjection = null;
+            dbGame.optiscalerPath = null;
 
             if (!dbGame.upscalers) dbGame.upscalers = {};
-            dbGame.upscalers.optiscaler = true;
-            dbGame.upscalers.optibuilder = false;
+            dbGame.upscalers.optibuilder = true;
+            dbGame.upscalers.optiscaler = false;
 
             if (!isAuto) dbGame.exePath = game.exePath;
             config.saveGamesState();
@@ -397,7 +382,7 @@ async function installOptiScaler(event, { game, version, tag, downloadUrl, injec
                 });
 
                 if (existingKey) {
-                    console.log(`[OPTISCALER] Oyun zaten user-games.json'da: key="${existingKey}"`);
+                    console.log(`[OPTIBUILDER] Oyun zaten user-games.json'da: key="${existingKey}"`);
                 } else {
                     const normKey = config.normalizeGameKey(game.name);
                     userGames[normKey] = {
@@ -407,109 +392,22 @@ async function installOptiScaler(event, { game, version, tag, downloadUrl, injec
                     };
                     config.saveUserGames(userGames);
                     savedToUserGames = true;
-                    console.log(`[OPTISCALER] Manuel kurulum sonrası user-games.json'a kaydedildi: key="${normKey}", name="${game.name}"`);
+                    console.log(`[OPTIBUILDER] Manuel kurulum sonrası user-games.json'a kaydedildi: key="${normKey}", name="${game.name}"`);
                 }
             } catch (saveErr) {
-                console.warn('[OPTISCALER] user-games.json kaydı başarısız (kurulum etkilenmez):', saveErr.message);
+                console.warn('[OPTIBUILDER] user-games.json kaydı başarısız (kurulum etkilenmez):', saveErr.message);
             }
         }
 
-        // ── OptiPatcher isteğe bağlı kurulum ──────────────────────────────────
-        let optiPatcherInstalled = false;
-        if (installOptiPatcher && optiPatcherTag) {
-            try {
-                console.log(`[OPTISCALER] OptiPatcher kurulumu başlıyor: ${optiPatcherTag}`);
-
-                // 1. İndirilmiş mi kontrol et
-                const asiPath = path.join(config.modsPath, 'OptiPatcher', optiPatcherTag, 'OptiPatcher.asi');
-                if (!fs.existsSync(asiPath)) {
-                    if (!optiPatcherUrl) throw new Error('OptiPatcher indirme linki bulunamadı.');
-                    console.log(`[OPTISCALER] OptiPatcher indiriliyor...`);
-                    const dlResult = await optiPatcher.downloadOptiPatcherRelease(event, { tag: optiPatcherTag, downloadUrl: optiPatcherUrl });
-                    if (!dlResult.success) throw new Error(dlResult.error || 'OptiPatcher indirilemedi.');
-                }
-
-                // 2. plugins klasörü oluştur ve .asi kopyala
-                const pluginsDir = path.join(targetExeDir, 'plugins');
-                fs.mkdirSync(pluginsDir, { recursive: true });
-                const destAsi = path.join(pluginsDir, 'OptiPatcher.asi');
-                fs.copyFileSync(asiPath, destAsi);
-                console.log(`[OPTISCALER] OptiPatcher.asi kopyalandı: ${destAsi}`);
-
-                // 3. OptiScaler.ini içinde LoadAsiPlugins=auto → true
-                try {
-                    const iniPath = path.join(targetExeDir, 'OptiScaler.ini');
-                    if (fs.existsSync(iniPath)) {
-                        let iniContent = fs.readFileSync(iniPath, 'utf8');
-                        const updated = iniContent.replace(
-                            /(LoadAsiPlugins\s*=\s*)auto/i,
-                            '$1true'
-                        );
-                        if (updated !== iniContent) {
-                            fs.writeFileSync(iniPath, updated, 'utf8');
-                            console.log(`[OPTISCALER] OptiScaler.ini güncellendi: LoadAsiPlugins=true`);
-                        } else {
-                            console.log(`[OPTISCALER] OptiScaler.ini içinde LoadAsiPlugins=auto bulunamadı, değiştirme atlandı.`);
-                        }
-                    } else {
-                        console.warn(`[OPTISCALER] OptiScaler.ini bulunamadı, LoadAsiPlugins güncellenemedi.`);
-                    }
-                } catch (iniErr) {
-                    console.warn(`[OPTISCALER] OptiScaler.ini düzenlenirken hata (kurulumu bozmaz):`, iniErr.message);
-                }
-
-                optiPatcherInstalled = true;
-                console.log(`[OPTISCALER] OptiPatcher kurulumu tamamlandı.`);
-            } catch (patcherErr) {
-                console.error(`[OPTISCALER] OptiPatcher kurulum hatası (OptiScaler kurulumunu bozmaz):`, patcherErr.message);
-            }
-        }
-
-        // ── FSR4 isteğe bağlı kurulum ─────────────────────────────────────────
-        let fsr4Installed = false;
-        if (installFsr4 && fsr4Name) {
-            try {
-                console.log(`[OPTISCALER] FSR4 kurulumu başlıyor: ${fsr4Name}`);
-
-                // 1. İndirilmiş mi kontrol et
-                const fsr4Dir = path.join(config.modsPath, 'fsr4files', fsr4Name);
-                const isDownloaded = fs.existsSync(fsr4Dir) && (() => {
-                    try { return fs.readdirSync(fsr4Dir).length > 0; } catch (e) { return false; }
-                })();
-
-                if (!isDownloaded) {
-                    if (!fsr4Url) throw new Error('FSR4 indirme linki bulunamadı.');
-                    console.log(`[OPTISCALER] FSR4 indiriliyor...`);
-                    const dlResult = await fsr4Files.downloadFsr4Release(event, { name: fsr4Name, downloadUrl: fsr4Url });
-                    if (!dlResult.success) throw new Error(dlResult.error || 'FSR4 indirilemedi.');
-                }
-
-                // 2. .dll dosyalarını targetExeDir'e kopyala
-                const dllFiles = fs.readdirSync(fsr4Dir).filter(f => f.toLowerCase().endsWith('.dll'));
-                if (dllFiles.length === 0) throw new Error('FSR4 klasöründe .dll dosyası bulunamadı.');
-                for (const dll of dllFiles) {
-                    const src = path.join(fsr4Dir, dll);
-                    const dest = path.join(targetExeDir, dll);
-                    fs.copyFileSync(src, dest);
-                    console.log(`[OPTISCALER] FSR4 .dll kopyalandı: ${dest}`);
-                }
-
-                fsr4Installed = true;
-                console.log(`[OPTISCALER] FSR4 kurulumu tamamlandı.`);
-            } catch (fsr4Err) {
-                console.error(`[OPTISCALER] FSR4 kurulum hatası (OptiScaler kurulumunu bozmaz):`, fsr4Err.message);
-            }
-        }
-
-        return { success: true, savedToUserGames, optiPatcherInstalled, fsr4Installed, games: config.getExistingGamesState() };
+        return { success: true, savedToUserGames, games: config.getExistingGamesState() };
     } catch (e) {
-        console.error('install-optiscaler error:', e);
+        console.error('install-optibuilder error:', e);
         return { success: false, error: e.message };
     }
 }
 
 module.exports = {
-    getOptiScalerReleases,
-    downloadOptiScalerRelease,
-    installOptiScaler
+    getOptiBuilderReleases,
+    downloadOptiBuilderRelease,
+    installOptiBuilder
 };

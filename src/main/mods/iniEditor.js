@@ -98,6 +98,17 @@ function findIniPath(game, mod) {
             if (exists1) return opti1;
         }
     }
+    if (mod === 'optibuilder') {
+        if (game.optiBuilderPath) {
+            const p1 = path.join(game.optiBuilderPath, 'OptiScaler.ini');
+            const p2 = path.join(game.optiBuilderPath, 'optiscaler.ini');
+            const exists2 = fs.existsSync(p2);
+            const exists1 = fs.existsSync(p1);
+            console.log(`[INI EDITOR] findIniPath: Step 1 checking game.optiBuilderPath. optiscaler.ini exists: ${exists2}, OptiScaler.ini exists: ${exists1}`);
+            if (exists2) return p2;
+            if (exists1) return p1;
+        }
+    }
 
     // 2. Standart konum: EXE'nin bulunduğu klasör
     if (!game.exePath) {
@@ -130,6 +141,14 @@ function findIniPath(game, mod) {
         console.log(`[INI EDITOR] findIniPath: Step 2 checking baseDir. optiscaler.ini exists: ${exists2}, OptiScaler.ini exists: ${exists1}`);
         if (exists2) return opti2;
         if (exists1) return opti1;
+    } else if (mod === 'optibuilder') {
+        const p1 = path.join(baseDir, 'OptiScaler.ini');
+        const p2 = path.join(baseDir, 'optiscaler.ini');
+        const exists2 = fs.existsSync(p2);
+        const exists1 = fs.existsSync(p1);
+        console.log(`[INI EDITOR] findIniPath: Step 2 checking baseDir for optibuilder. optiscaler.ini exists: ${exists2}, OptiScaler.ini exists: ${exists1}`);
+        if (exists2) return p2;
+        if (exists1) return p1;
     }
 
     // 3. Fallback: Oyun ana klasöründe (gameRoot) veya exe klasöründe recursive ara
@@ -146,6 +165,13 @@ function findIniPath(game, mod) {
         const found2 = findFileRecursive(searchRoot, 'optiscaler.ini');
         console.log(`[INI EDITOR] findIniPath: Step 3 found2 for optiscaler: "${found2}"`);
         if (found2) return found2;
+    } else if (mod === 'optibuilder') {
+        const found1 = findFileRecursive(searchRoot, 'OptiScaler.ini');
+        console.log(`[INI EDITOR] findIniPath: Step 3 found1 for optibuilder (OptiScaler.ini): "${found1}"`);
+        if (found1) return found1;
+        const found2 = findFileRecursive(searchRoot, 'optiscaler.ini');
+        console.log(`[INI EDITOR] findIniPath: Step 3 found2 for optibuilder (optiscaler.ini): "${found2}"`);
+        if (found2) return found2;
     }
 
     // 4. Bulunamazsa varsayılan olarak exe yanını döndür (yeni oluşturulacaksa)
@@ -156,6 +182,10 @@ function findIniPath(game, mod) {
     } else if (mod === 'optiscaler') {
         const fallback = path.join(baseDir, 'OptiScaler.ini');
         console.log(`[INI EDITOR] findIniPath: Step 4 fallback path for optiscaler: "${fallback}"`);
+        return fallback;
+    } else if (mod === 'optibuilder') {
+        const fallback = path.join(baseDir, 'OptiScaler.ini');
+        console.log(`[INI EDITOR] findIniPath: Step 4 fallback path for optibuilder: "${fallback}"`);
         return fallback;
     }
     console.log(`[INI EDITOR] findIniPath: returning null`);

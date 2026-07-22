@@ -8,19 +8,28 @@ const scanner = require('./scanner');
 const utils = require('./utils');
 const dlssEnabler = require('./mods/dlssEnabler');
 const optiScaler = require('./mods/optiScaler');
+const optiBuilder = require('./mods/optiBuilder');
+const optiBuilderWizard = require('./mods/optiBuilderWizard');
 const optiPatcher = require('./mods/optiPatcher');
 const fsr4Files = require('./mods/fsr4Files');
 const streamline = require('./mods/streamline');
 const uninstaller = require('./mods/uninstaller');
 const compressor = require('./mods/compressor');
 const analyser = require('./mods/analyser');
+const compressionDb = require('./mods/compressionDb');
 const steamScanner = require('./mods/steamScanner');
 const iniEditor = require('./mods/iniEditor');
 const updater = require('./updater');
 const releaseCache = require('./mods/releaseCache');
+const dlssWizard = require('./mods/dlssWizard');
+const optiWizard = require('./mods/optiWizard');
 
 let isScanning = false;
 let isCompressing = false;
+let isDlssWizardAborted = false;
+let isOptiWizardAborted = false;
+let isOptiBuilderWizardAborted = false;
+let cachedSystemInfo = null;
 // C-06: Prevent duplicate IPC handler registration
 let ipcRegistered = false;
 
@@ -45,6 +54,7 @@ function registerIpcHandlers() {
     });
 
     ipcMain.handle('save-settings', (event, settings) => {
+        const oldSettings = config.getSettings();
         config.saveSettings(settings);
         // Apply resolution changes instantly
         if (settings && settings.resolution) {
@@ -61,6 +71,23 @@ function registerIpcHandlers() {
                 }
             }
         }
+
+        // Apply Discord RPC changes instantly
+        try {
+            const discord = require('./discord');
+            if (oldSettings.discordRpcEnabled !== settings.discordRpcEnabled || oldSettings.discordClientId !== settings.discordClientId) {
+                if (settings.discordRpcEnabled) {
+                    discord.initDiscordRpc();
+                } else {
+                    discord.shutdownDiscordRpc();
+                }
+            } else if (settings.discordRpcEnabled) {
+                discord.setPresence();
+            }
+        } catch (e) {
+            console.error('[IPC] Failed to update Discord RPC after settings save:', e.message);
+        }
+
         return { success: true };
     });
 
@@ -95,8 +122,11 @@ function registerIpcHandlers() {
     ipcMain.handle('add-manual-game', async (event) => {
         console.log('[IPC] add-manual-game triggered');
         const window = BrowserWindow.fromWebContents(event.sender);
+        const settings = config.getSettings();
+        const lang = settings.language || 'tr';
+        const isEn = lang === 'en';
         const { canceled, filePaths } = await dialog.showOpenDialog(window, {
-            title: 'Oyun Ana Klasörünü Seçin',
+            title: isEn ? 'Select Game Root Folder' : 'Oyun Ana Klasörünü Seçin',
             properties: ['openDirectory']
         });
 
@@ -244,6 +274,10 @@ function registerIpcHandlers() {
         return await dlssEnabler.selectExe(event);
     });
 
+    ipcMain.handle('scan-folder-for-exes', async (event, folderPath) => {
+        return utils.scanFolderForExes(folderPath);
+    });
+
     ipcMain.handle('execute-dlss-install', async (event, { game, exePath, version, dllName, downloadUrl }) => {
         return await dlssEnabler.executeDlssInstall(event, game, exePath, version, dllName, downloadUrl);
     });
@@ -269,6 +303,146 @@ function registerIpcHandlers() {
 
     ipcMain.handle('download-dlss-enabler-release', async (event, { name, downloadUrl }) => {
         return await dlssEnabler.downloadDlssEnablerRelease(event, { name, downloadUrl });
+    });
+
+    ipcMain.handle('run-dlss-wizard', async (event, data) => {
+        isDlssWizardAborted = false;
+        return await dlssWizard.runDlssWizard(event, data, () => isDlssWizardAborted);
+    });
+
+    ipcMain.handle('abort-dlss-wizard', async () => {
+        isDlssWizardAborted = true;
+        return { success: true };
+    });
+
+    ipcMain.handle('clear-wizard-logs', async () => {
+        return await dlssWizard.clearWizardLogs();
+    });
+
+    ipcMain.handle('get-wizard-logs-info', async () => {
+        return await dlssWizard.getWizardLogsInfo();
+    });
+
+    ipcMain.handle('open-wizard-logs-dir', async () => {
+        return await dlssWizard.openWizardLogsDir();
+    });
+
+    ipcMain.handle('check-dx12-support', async (event, exePath) => {
+        return await utils.checkDx12Support(exePath);
+    });
+
+    ipcMain.handle('run-opti-wizard', async (event, data) => {
+        isOptiWizardAborted = false;
+        return await optiWizard.runOptiWizard(event, data, () => isOptiWizardAborted);
+    });
+
+    ipcMain.handle('abort-opti-wizard', async () => {
+        isOptiWizardAborted = true;
+        return { success: true };
+    });
+
+    ipcMain.handle('get-system-info', async (event, { forceRefresh } = {}) => {
+        if (!cachedSystemInfo) {
+            try {
+                const settings = config.getSettings();
+                if (settings && settings.systemInfo) {
+                    cachedSystemInfo = settings.systemInfo;
+                }
+            } catch (e) {
+                console.error('[IPC] Failed to read systemInfo from settings:', e);
+            }
+        }
+
+        if (cachedSystemInfo && !forceRefresh) {
+            return cachedSystemInfo;
+        }
+
+        return new Promise((resolve) => {
+            const psCommand = `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; ` +
+                `$gpu = ''; try { $gpu = (Get-CimInstance Win32_VideoController | Select-Object -First 1).Name } catch {}; ` +
+                `$cpu = ''; try { $cpu = (Get-CimInstance Win32_Processor | Select-Object -First 1).Name } catch {}; ` +
+                `$ramGb = '0'; try { $ramGb = [Math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB) } catch {}; ` +
+                `$d3d12Max = 0; ` +
+                `try { ` +
+                `  $dx = Get-ItemProperty -Path 'HKLM:\\SOFTWARE\\Microsoft\\DirectX' -ErrorAction SilentlyContinue; ` +
+                `  if ($dx -ne $null -and $dx.D3D12MaxFeatureLevel -ne $null) { $d3d12Max = $dx.D3D12MaxFeatureLevel }; ` +
+                `  $subkeys = Get-ChildItem -Path 'HKLM:\\SOFTWARE\\Microsoft\\DirectX' -ErrorAction SilentlyContinue; ` +
+                `  if ($subkeys -ne $null) { ` +
+                `    foreach ($sub in $subkeys) { ` +
+                `      $subProps = Get-ItemProperty -Path $sub.PSPath -ErrorAction SilentlyContinue; ` +
+                `      if ($subProps -ne $null -and $subProps.D3D12MaxFeatureLevel -ne $null) { ` +
+                `        if ($subProps.D3D12MaxFeatureLevel -gt $d3d12Max) { $d3d12Max = $subProps.D3D12MaxFeatureLevel } ` +
+                `      } ` +
+                `    } ` +
+                `  } ` +
+                `} catch {}; ` +
+                `$dx12Supported = 'False'; $dx12FeatureLevel = 'Yok'; ` +
+                `if ($d3d12Max -gt 0) { ` +
+                `  if ($d3d12Max -ge 49664) { $dx12Supported = 'True'; $dx12FeatureLevel = '12_2 (Ultimate)' } ` +
+                `  elseif ($d3d12Max -ge 49408) { $dx12Supported = 'True'; $dx12FeatureLevel = '12_1' } ` +
+                `  elseif ($d3d12Max -ge 48000) { $dx12Supported = 'True'; $dx12FeatureLevel = '12_0' } ` +
+                `} else { ` +
+                `  $dx12Supported = 'True'; $dx12FeatureLevel = 'Genel (Bilinmiyor)' ` +
+                `}; ` +
+                `$gpuTrim = if ($gpu) { $gpu.Trim() } else { 'Bilinmiyor' }; ` +
+                `$cpuTrim = if ($cpu) { $cpu.Trim() } else { 'Bilinmiyor' }; ` +
+                `Write-Output ($gpuTrim + ';' + $cpuTrim + ';' + $ramGb + ';' + $dx12Supported + ';' + $dx12FeatureLevel)`;
+
+            const { spawn } = require('child_process');
+            const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', psCommand], {
+                shell: false
+            });
+
+            let stdout = '';
+            let stderr = '';
+
+            child.stdout.setEncoding('utf8');
+            child.stdout.on('data', (data) => {
+                stdout += data.toString();
+            });
+
+            child.stderr.on('data', (data) => {
+                stderr += data.toString();
+            });
+
+            child.on('close', (code) => {
+                if (code !== 0) {
+                    console.error('[IPC] get-system-info process exited with code', code, 'stderr:', stderr);
+                    resolve({ success: false, error: stderr || `Exited with code ${code}` });
+                    return;
+                }
+                const parts = stdout.trim().split(';');
+                if (parts.length >= 5) {
+                    const info = {
+                        success: true,
+                        gpu: parts[0].trim() || 'Bilinmiyor',
+                        cpu: parts[1].trim() || 'Bilinmiyor',
+                        ram: (parts[2].trim() !== '0' ? parts[2].trim() + ' GB' : 'Bilinmiyor'),
+                        dx12Supported: parts[3].trim() === 'True',
+                        dx12FeatureLevel: parts[4].trim()
+                    };
+                    cachedSystemInfo = info;
+                    try {
+                        const settings = config.getSettings();
+                        settings.systemInfo = info;
+                        config.saveSettings(settings);
+                    } catch (e) {
+                        console.error('[IPC] Failed to save systemInfo to settings:', e);
+                    }
+                    resolve(info);
+                } else {
+                    resolve({
+                        success: false,
+                        error: 'Format error: ' + stdout
+                    });
+                }
+            });
+
+            child.on('error', (err) => {
+                console.error('[IPC] get-system-info spawn error:', err);
+                resolve({ success: false, error: err.message });
+            });
+        });
     });
 
     // ── Dual-layer Game Path System IPCs ──────────────────────────────────────
@@ -320,6 +494,11 @@ function registerIpcHandlers() {
         return config.getDeveloperGames();
     });
 
+    /** Returns dlss_enabler_games.json (read-only, for UI display/highlighting) */
+    ipcMain.handle('get-dlss-enabler-games', async () => {
+        return config.getDlssEnablerGames();
+    });
+
     /**
      * Resolves paths for a game using the dual-layer priority system.
      * Returns { game_root, exe_path, source } or null.
@@ -367,6 +546,29 @@ function registerIpcHandlers() {
         return await optiScaler.installOptiScaler(event, data);
     });
 
+    // OptiBuilder
+    ipcMain.handle('run-optibuilder-wizard', async (event, data) => {
+        isOptiBuilderWizardAborted = false;
+        return await optiBuilderWizard.runOptiBuilderWizard(event, data, () => isOptiBuilderWizardAborted);
+    });
+
+    ipcMain.handle('abort-optibuilder-wizard', async () => {
+        isOptiBuilderWizardAborted = true;
+        return { success: true };
+    });
+
+    ipcMain.handle('get-optibuilder-releases', async (event, { forceRefresh } = {}) => {
+        return await optiBuilder.getOptiBuilderReleases(forceRefresh);
+    });
+
+    ipcMain.handle('download-optibuilder-release', async (event, { tag, downloadUrl }) => {
+        return await optiBuilder.downloadOptiBuilderRelease(event, { tag, downloadUrl });
+    });
+
+    ipcMain.handle('install-optibuilder', async (event, data) => {
+        return await optiBuilder.installOptiBuilder(event, data);
+    });
+
     // OptiPatcher
     ipcMain.handle('get-optipatcher-releases', async (event, { forceRefresh } = {}) => {
         if (forceRefresh) releaseCache.clearCache('optipatcher');
@@ -390,8 +592,11 @@ function registerIpcHandlers() {
     // Folder selection
     ipcMain.handle('select-folder', async (event) => {
         const window = BrowserWindow.fromWebContents(event.sender);
+        const settings = config.getSettings();
+        const lang = settings.language || 'tr';
+        const isEn = lang === 'en';
         const { canceled, filePaths } = await dialog.showOpenDialog(window, {
-            title: 'Klasör Seç',
+            title: isEn ? 'Select Folder' : 'Klasör Seç',
             properties: ['openDirectory']
         });
 
@@ -420,13 +625,44 @@ function registerIpcHandlers() {
     // Compression Core
     ipcMain.handle('run-compression', async (event, { folderPath, algorithm }) => {
         isCompressing = true;
+        const startTime = Date.now();
+        // Sıkıştırma öncesi analiz
+        let beforeStats = { uncompressedBytes: 0, compressedBytes: 0, fileCount: 0, ratio: '1.0' };
+        try { beforeStats = await analyser.analyze(folderPath); } catch (_) {}
         try {
-            return await compressor.compress(folderPath, algorithm, {}, (progress) => {
+            const result = await compressor.compress(folderPath, algorithm, {}, (progress) => {
                 // M-18: Guard against sending to destroyed window
                 if (!event.sender.isDestroyed()) {
                     event.sender.send('compression-progress', { folderPath, progress });
                 }
             });
+            // Sıkıştırma sonrası analiz → geçmişe kaydet
+            let afterStats = { uncompressedBytes: beforeStats.uncompressedBytes, compressedBytes: 0, ratio: '1.0' };
+            try { afterStats = await analyser.analyze(folderPath); } catch (_) {}
+            const durationMs = Date.now() - startTime;
+            const savedBytes = Math.max(0, afterStats.uncompressedBytes - afterStats.compressedBytes);
+            const savedPercent = afterStats.uncompressedBytes > 0
+                ? Math.max(0, Math.round((savedBytes / afterStats.uncompressedBytes) * 100))
+                : 0;
+            const folderName = require('path').basename(folderPath);
+            await compressionDb.removeEntriesByPath(folderPath);
+            await compressionDb.addEntry({
+                id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                timestamp: new Date().toISOString(),
+                type: 'compress',
+                folderPath,
+                folderName,
+                algorithm: algorithm || null,
+                sizeBefore: afterStats.uncompressedBytes,
+                sizeAfter: afterStats.compressedBytes,
+                fileCount: afterStats.fileCount,
+                ratio: afterStats.ratio,
+                savedBytes,
+                savedPercent,
+                durationMs,
+                success: true
+            });
+            return result;
         } finally {
             isCompressing = false;
         }
@@ -434,16 +670,38 @@ function registerIpcHandlers() {
 
     ipcMain.handle('run-uncompression', async (event, { folderPath }) => {
         isCompressing = true;
+        const startTime = Date.now();
+        // Geri alma öncesi analiz
+        let beforeStats = { uncompressedBytes: 0, compressedBytes: 0, fileCount: 0, ratio: '1.0' };
+        try { beforeStats = await analyser.analyze(folderPath); } catch (_) {}
         try {
-            return await compressor.uncompress(folderPath, (progress) => {
+            const result = await compressor.uncompress(folderPath, (progress) => {
                 // M-18: Guard against sending to destroyed window
                 if (!event.sender.isDestroyed()) {
                     event.sender.send('compression-progress', { folderPath, progress });
                 }
             });
+            // Geri alma başarılıysa o klasörün tüm geçmiş kayıtlarını sil
+            await compressionDb.removeEntriesByPath(folderPath);
+            return result;
         } finally {
             isCompressing = false;
         }
+    });
+
+    // Compression History
+    ipcMain.handle('get-compression-history', async () => {
+        return await compressionDb.getHistory();
+    });
+
+    ipcMain.handle('remove-history-entry', async (event, id) => {
+        await compressionDb.removeEntry(id);
+        return { success: true };
+    });
+
+    ipcMain.handle('clear-compression-history', async () => {
+        await compressionDb.clearHistory();
+        return { success: true };
     });
 
 
@@ -669,11 +927,16 @@ function registerIpcHandlers() {
 
                 const existingGame = existingGames.find(g => g.name.toLowerCase() === gameName.toLowerCase() || g.gameRoot === gameRoot);
                 if (existingGame) {
+                    const settings = config.getSettings();
+                    const lang = settings.language || 'tr';
+                    const isEn = lang === 'en';
                     const response = await dialog.showMessageBox(window, {
                         type: 'question',
-                        buttons: ['Evet', 'Hayır'],
-                        title: 'Çakışma Tespit Edildi',
-                        message: `"${gameName}" zaten listenizde mevcut. Mevcut oyunun verilerini üzerine yazmak istiyor musunuz?`
+                        buttons: isEn ? ['Yes', 'No'] : ['Evet', 'Hayır'],
+                        title: isEn ? 'Conflict Detected' : 'Çakışma Tespit Edildi',
+                        message: isEn 
+                            ? `"${gameName}" is already in your list. Do you want to overwrite the existing game's data?`
+                            : `"${gameName}" zaten listenizde mevcut. Mevcut oyunun verilerini üzerine yazmak istiyor musunuz?`
                     });
 
                     if (response.response !== 0) {
@@ -746,6 +1009,85 @@ function registerIpcHandlers() {
     // Kullanıcı "Kur ve Yeniden Başlat" butonuna bastığında
     ipcMain.on('quit-and-install', () => {
         updater.quitAndInstall();
+    });
+
+    // Unified Mod Versions - Delete and Open Folder handlers
+    ipcMain.handle('delete-mod-version', async (event, { modName, name, tag }) => {
+        try {
+            const folderName = (modName === 'dlssenabler' || modName === 'fsr4') ? name : tag;
+            if (!folderName) {
+                return { success: false, error: 'Sürüm ismi/etiketi geçersiz.' };
+            }
+
+            let targetDir;
+            if (modName === 'dlssenabler') {
+                targetDir = path.join(config.modsPath, 'dlssenabler', folderName);
+            } else if (modName === 'optiscaler') {
+                targetDir = path.join(config.modsPath, 'optiscaler', folderName);
+            } else if (modName === 'optibuilder') {
+                targetDir = path.join(config.modsPath, 'optibuilder', folderName);
+            } else if (modName === 'optipatcher') {
+                targetDir = path.join(config.modsPath, 'OptiPatcher', folderName);
+            } else if (modName === 'fsr4') {
+                targetDir = path.join(config.modsPath, 'fsr4files', folderName);
+            } else if (modName === 'streamline') {
+                targetDir = path.join(config.streamlineModsPath, folderName);
+            } else {
+                throw new Error(`Unknown mod type: ${modName}`);
+            }
+
+            console.log(`[IPC] delete-mod-version: received request to delete modName=${modName}, name=${name}, tag=${tag}`);
+            console.log(`[IPC] delete-mod-version: target folderName resolved to: ${folderName}`);
+            console.log(`[IPC] delete-mod-version: full target path to delete: ${targetDir}`);
+            if (fs.existsSync(targetDir)) {
+                await fs.promises.rm(targetDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+                console.log(`[IPC] delete-mod-version: successfully deleted ${targetDir}`);
+                return { success: true };
+            } else {
+                console.warn(`[IPC] delete-mod-version: target path not found: ${targetDir}`);
+                return { success: false, error: `Sürüm klasörü bulunamadı: ${targetDir}` };
+            }
+        } catch (e) {
+            console.error('[IPC] delete-mod-version error:', e);
+            return { success: false, error: `Silme hatası: ${e.message}` };
+        }
+    });
+
+    ipcMain.handle('open-mod-folder', async (event, { modName, name, tag }) => {
+        try {
+            const folderName = (modName === 'dlssenabler' || modName === 'fsr4') ? name : tag;
+            if (!folderName) {
+                return { success: false, error: 'Sürüm ismi/etiketi geçersiz.' };
+            }
+
+            let targetDir;
+            if (modName === 'dlssenabler') {
+                targetDir = path.join(config.modsPath, 'dlssenabler', folderName);
+            } else if (modName === 'optiscaler') {
+                targetDir = path.join(config.modsPath, 'optiscaler', folderName);
+            } else if (modName === 'optibuilder') {
+                targetDir = path.join(config.modsPath, 'optibuilder', folderName);
+            } else if (modName === 'optipatcher') {
+                targetDir = path.join(config.modsPath, 'OptiPatcher', folderName);
+            } else if (modName === 'fsr4') {
+                targetDir = path.join(config.modsPath, 'fsr4files', folderName);
+            } else if (modName === 'streamline') {
+                targetDir = path.join(config.streamlineModsPath, folderName);
+            } else {
+                throw new Error(`Unknown mod type: ${modName}`);
+            }
+
+            console.log(`[IPC] open-mod-folder: opening targetDir -> ${targetDir}`);
+            if (fs.existsSync(targetDir)) {
+                await shell.openPath(targetDir);
+                return { success: true };
+            } else {
+                return { success: false, error: `Sürüm klasörü bulunamadı: ${targetDir}` };
+            }
+        } catch (e) {
+            console.error('[IPC] open-mod-folder error:', e);
+            return { success: false, error: `Klasör açma hatası: ${e.message}` };
+        }
     });
 }
 

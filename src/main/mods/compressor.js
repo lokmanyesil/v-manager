@@ -159,14 +159,7 @@ class WindowsCompressor {
         }
     }
 
-    cancel(folderPath) {
-        const proc = this.activeProcesses.get(folderPath);
-        if (proc) {
-            proc.kill('SIGKILL');
-            return true;
-        }
-        return false;
-    }
+
 
     /**
      * Checks the compression state of a folder

@@ -1,6 +1,6 @@
 import { state } from '../../state.js';
 import { openModal, closeModal, setSettingsCloseGuard } from './base.js';
-import { DLSS_ENABLER_SCHEMA, OPTISCALER_FOCUSED_KEYS, OPTISCALER_INSTALL_KEYS } from './iniSchema.js';
+import { DLSS_ENABLER_SCHEMA, OPTISCALER_FOCUSED_KEYS, OPTISCALER_INSTALL_KEYS, OPTIBUILDER_FOCUSED_KEYS } from './iniSchema.js';
 import { t } from '../../i18n/i18n.js';
 
 // ─── Geliştirici Presetleri (Salt Okunur) ────────────────────────────────────
@@ -15,6 +15,30 @@ const DEVELOPER_PRESETS = {
                 Performance: { MFGOverrideMode: 6, MFGHotkeys: true },
                 UI: { Monitoring: true },
                 GhostBuster: { Enabled: true }
+            }
+        }
+    ],
+    'optibuilder': [
+        {
+            id: 'dev-optibuilder-fg',
+            nameKey: 'modSettings.presets.devOptiFgName',
+            locked: true,
+            values: {
+                FrameGen: {
+                    Enabled: 'true',
+                    FGInput: 'upscaler',
+                    FGOutput: 'dlssgwithnvngx'
+                },
+                DLSSG: {
+                    InterpolationCount: 6,
+                    DisableHudless: 'true',
+                    DispatchFlags: '0x4100000'
+                },
+                Menu: {
+                    ShowFps: 'true',
+                    FpsOverlayPos: 'auto',
+                    FpsOverlayType: 'auto'
+                }
             }
         }
     ],
@@ -53,6 +77,7 @@ export function initSettingsListeners() {
         loadModSettings('dlss-enabler');
     });
     document.getElementById('tab-optiscaler')?.addEventListener('click', () => loadModSettings('optiscaler'));
+    document.getElementById('tab-optibuilder')?.addEventListener('click', () => loadModSettings('optibuilder'));
 
     // Floating kaydet butonu
     document.getElementById('settings-save-btn')?.addEventListener('click', async () => {
@@ -150,27 +175,33 @@ export function openSettingsModal(game) {
             if (placeholder) placeholder.style.display = 'flex';
         }
 
-        const tabDlss = document.getElementById('tab-dlss-enabler');
-        const tabOpti = document.getElementById('tab-optiscaler');
+        const tabDlss  = document.getElementById('tab-dlss-enabler');
+        const tabOpti  = document.getElementById('tab-optiscaler');
+        const tabObui  = document.getElementById('tab-optibuilder');
 
         console.log('[RENDERER settings.js] game.hasDlssEnabler:', game.hasDlssEnabler);
         console.log('[RENDERER settings.js] game.hasOptiscaler:', game.hasOptiscaler);
+        console.log('[RENDERER settings.js] game.hasOptiBuilder:', game.hasOptiBuilder);
 
         if (tabDlss) tabDlss.style.display = game.hasDlssEnabler ? 'block' : 'none';
         if (tabOpti) tabOpti.style.display = (game.hasOptiscaler || game.hasDlssEnabler) ? 'block' : 'none';
+        if (tabObui) tabObui.style.display = game.hasOptiBuilder ? 'block' : 'none';
 
         const contentDiv = document.getElementById('settings-content');
         if (contentDiv) contentDiv.innerHTML = '';
 
         hideError();
 
-        // Varsayılan sekmeyi belirle: önce DLSS, yoksa OptiScaler
+        // Varsayılan sekmeyi belirle: önce DLSS, sonra OptiScaler, sonra OptiBuilder
         if (game.hasDlssEnabler) {
             console.log('[RENDERER settings.js] Defaulting to dlss-enabler tab');
             loadModSettings('dlss-enabler');
         } else if (game.hasOptiscaler) {
             console.log('[RENDERER settings.js] Defaulting to optiscaler tab');
             loadModSettings('optiscaler');
+        } else if (game.hasOptiBuilder) {
+            console.log('[RENDERER settings.js] Defaulting to optibuilder tab');
+            loadModSettings('optibuilder');
         } else {
             console.log('[RENDERER settings.js] No mod available for settings');
             if (contentDiv) {
@@ -199,15 +230,18 @@ export function openSettingsModal(game) {
 function updateTabStyles(activeMod) {
     const tabDlss = document.getElementById('tab-dlss-enabler');
     const tabOpti = document.getElementById('tab-optiscaler');
+    const tabObui = document.getElementById('tab-optibuilder');
 
     const active   = { opacity: '1', borderWidth: '2px' };
     const inactive = { opacity: '0.5', borderWidth: '1px' };
 
-    const dlssStyle = activeMod === 'dlss-enabler' ? active : inactive;
-    const optiStyle = activeMod === 'optiscaler'   ? active : inactive;
+    const dlssStyle = activeMod === 'dlss-enabler'  ? active : inactive;
+    const optiStyle = activeMod === 'optiscaler'    ? active : inactive;
+    const obuiStyle = activeMod === 'optibuilder'   ? active : inactive;
 
     if (tabDlss) { tabDlss.style.opacity = dlssStyle.opacity; tabDlss.style.borderWidth = dlssStyle.borderWidth; }
     if (tabOpti) { tabOpti.style.opacity = optiStyle.opacity; tabOpti.style.borderWidth = optiStyle.borderWidth; }
+    if (tabObui) { tabObui.style.opacity = obuiStyle.opacity; tabObui.style.borderWidth = obuiStyle.borderWidth; }
 }
 
 // ─── Mod ayarlarını yükle ────────────────────────────────────────────────────
@@ -283,6 +317,17 @@ async function loadModSettings(mod) {
 
             currentSettingsData = focused;
             renderWithPresets(mod, () => renderFocusedSettingsUI(focused, schema));
+        } else if (mod === 'optibuilder') {
+            const focused = extractFocusedKeys(result.data, OPTIBUILDER_FOCUSED_KEYS);
+
+            // FGInput / FGOutput 'auto' değerini nofg olarak ele al
+            if (focused.FrameGen) {
+                if (focused.FrameGen.FGInput  === 'auto') focused.FrameGen.FGInput  = 'nofg';
+                if (focused.FrameGen.FGOutput === 'auto') focused.FrameGen.FGOutput = 'nofg';
+            }
+
+            currentSettingsData = focused;
+            renderWithPresets(mod, () => renderFocusedSettingsUI(focused, OPTIBUILDER_FOCUSED_KEYS));
         }
 
     } catch (err) {

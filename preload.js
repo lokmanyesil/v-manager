@@ -32,6 +32,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getSystemDrives: () => ipcRenderer.invoke('get-system-drives'),
     getDlssVersions: () => ipcRenderer.invoke('get-dlss-versions'),
     selectExe: () => ipcRenderer.invoke('select-exe'),
+    scanFolderForExes: (folderPath) => ipcRenderer.invoke('scan-folder-for-exes', folderPath),
     executeDlssInstall: (data) => ipcRenderer.invoke('execute-dlss-install', data),
     autoInstallDlss: (data) => ipcRenderer.invoke('auto-install-dlss', data),
 
@@ -48,6 +49,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     saveUserGame: (data) => ipcRenderer.invoke('save-user-game', data),
     deleteUserGame: (normKey) => ipcRenderer.invoke('delete-user-game', normKey),
     getDeveloperGames: () => ipcRenderer.invoke('get-developer-games'),
+    getDlssEnablerGames: () => ipcRenderer.invoke('get-dlss-enabler-games'),
     resolveGamePaths: (gameName, exePath) => ipcRenderer.invoke('resolve-game-paths', gameName, exePath),
 
     // Streamline IPCs
@@ -67,6 +69,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // FIX 4f: Expose a cleanup function to remove accumulated progress listeners
     removeOptiScalerProgressListeners: () => ipcRenderer.removeAllListeners('optiscaler-download-progress'),
     installOptiscaler: (data) => ipcRenderer.invoke('install-optiscaler', data),
+
+    // OptiBuilder IPCs
+    getOptiBuilderReleases: (forceRefresh = false) => ipcRenderer.invoke('get-optibuilder-releases', { forceRefresh }),
+    downloadOptiBuilderRelease: (data) => ipcRenderer.invoke('download-optibuilder-release', data),
+    onOptiBuilderDownloadProgress: (callback) => ipcRenderer.on('optibuilder-download-progress', (_event, data) => callback(data)),
+    removeOptiBuilderProgressListeners: () => ipcRenderer.removeAllListeners('optibuilder-download-progress'),
+    installOptiBuilder: (data) => ipcRenderer.invoke('install-optibuilder', data),
 
     // OptiPatcher IPCs
     getOptiPatcherReleases: (forceRefresh = false) => ipcRenderer.invoke('get-optipatcher-releases', { forceRefresh }),
@@ -99,6 +108,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onCompressionProgress: (callback) => ipcRenderer.on('compression-progress', (_event, data) => callback(data)),
     // C-02: Cleanup function for compression progress listeners to prevent memory leaks
     removeCompressionProgressListeners: () => ipcRenderer.removeAllListeners('compression-progress'),
+
+    // System Info
+    getSystemInfo: (args) => ipcRenderer.invoke('get-system-info', args),
+
+    // Compression History
+    getCompressionHistory: () => ipcRenderer.invoke('get-compression-history'),
+    removeHistoryEntry: (id) => ipcRenderer.invoke('remove-history-entry', id),
+    clearCompressionHistory: () => ipcRenderer.invoke('clear-compression-history'),
 
     // YouTube RSS and External Link opening
     fetchYoutubeVideos: () => ipcRenderer.invoke('fetch-youtube-videos'),
@@ -134,5 +151,39 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.removeAllListeners('update-download-progress');
         ipcRenderer.removeAllListeners('update-downloaded');
         ipcRenderer.removeAllListeners('update-error');
-    }
+    },
+
+    // DLSS Wizard IPCs
+    runDlssWizard: (data) => ipcRenderer.invoke('run-dlss-wizard', data),
+    abortDlssWizard: () => ipcRenderer.invoke('abort-dlss-wizard'),
+    clearWizardLogs: () => ipcRenderer.invoke('clear-wizard-logs'),
+    getWizardLogsInfo: () => ipcRenderer.invoke('get-wizard-logs-info'),
+    openWizardLogsDir: () => ipcRenderer.invoke('open-wizard-logs-dir'),
+    onWizardLog: (callback) => {
+        ipcRenderer.removeAllListeners('wizard-log');
+        ipcRenderer.on('wizard-log', (_event, data) => callback(data));
+    },
+    removeWizardLogListeners: () => ipcRenderer.removeAllListeners('wizard-log'),
+    checkDx12Support: (exePath) => ipcRenderer.invoke('check-dx12-support', exePath),
+    runOptiWizard: (data) => ipcRenderer.invoke('run-opti-wizard', data),
+    abortOptiWizard: () => ipcRenderer.invoke('abort-opti-wizard'),
+    onOptiWizardLog: (callback) => { ipcRenderer.removeAllListeners('opti-wizard-log'); ipcRenderer.on('opti-wizard-log', (_event, data) => callback(data)); },
+    removeOptiWizardLogListeners: () => ipcRenderer.removeAllListeners('opti-wizard-log'),
+
+    // OptiBuilder Wizard
+    runOptiBuilderWizard: (data) => ipcRenderer.invoke('run-optibuilder-wizard', data),
+    abortOptiBuilderWizard: () => ipcRenderer.invoke('abort-optibuilder-wizard'),
+    onOptiBuilderWizardLog: (callback) => { ipcRenderer.removeAllListeners('optibuilder-wizard-log'); ipcRenderer.on('optibuilder-wizard-log', (_event, data) => callback(data)); },
+    removeOptiBuilderWizardLogListeners: () => ipcRenderer.removeAllListeners('optibuilder-wizard-log'),
+
+    deleteModVersion: (data) => ipcRenderer.invoke('delete-mod-version', data),
+    openModFolder: (data) => ipcRenderer.invoke('open-mod-folder', data),
+
+    // Discord Rich Presence APIs
+    onDiscordRpcError: (callback) => {
+        ipcRenderer.removeAllListeners('discord-rpc-error');
+        ipcRenderer.on('discord-rpc-error', (_event, errorMsg) => callback(errorMsg));
+    },
+    removeDiscordRpcErrorListeners: () => ipcRenderer.removeAllListeners('discord-rpc-error')
 });
+

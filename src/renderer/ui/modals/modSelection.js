@@ -1,5 +1,6 @@
 import { openDlssModal } from './dlss.js';
 import { openOptiModal } from './opti.js';
+import { openOptiBuilderModal } from './optiBuilder.js';
 import { openStreamlineModal } from './streamline.js';
 import { closeModal } from './base.js';
 
@@ -13,6 +14,8 @@ export function initModSelectionListeners() {
                 openDlssModal();
             } else if (mod === 'Optiscaler') {
                 openOptiModal();
+            } else if (mod === 'OptiBuilder') {
+                openOptiBuilderModal();
             } else if (mod === 'Streamline') {
                 openStreamlineModal();
             }
