@@ -13,7 +13,6 @@ is strictly prohibited.
   <img src="https://img.shields.io/badge/Platform-Windows-blue?style=for-the-badge&logo=windows" alt="Platform: Windows" />
   <img src="https://img.shields.io/badge/Framework-Electron-activegreen?style=for-the-badge&logo=electron" alt="Framework: Electron" />
   <img src="https://img.shields.io/badge/License-Proprietary-red?style=for-the-badge" alt="License: Proprietary" />
-  <img src="https://img.shields.io/badge/Status-Early%20Access%20%2F%20Erken%20Eri%C5%9Fim-purple?style=for-the-badge" alt="Status: Early Access" />
 </p>
 
 <p align="center">
