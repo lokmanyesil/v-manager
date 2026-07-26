@@ -39,7 +39,9 @@ V-Manager, modern oyuncuların ihtiyaç duyduğu mod yönetimi, disk alanı tasa
 
 *   🔍 **Gelişmiş Oyun Tarama:** **Steam**, **Epic Games**, **GOG Galaxy**, **Xbox**, **EA App** ve **Ubisoft Connect** platformlarındaki oyunları otomatik olarak algılar. Ayrıca Windows Kayıt Defteri (Registry) ve manuel tanımlanan klasörleri de tarayabilir.
 *   🖼️ **Otomatik Kapak Görseli:** Bulunan oyunlar için **SteamGrid DB API** kullanarak otomatik olarak kapak görsellerini indirir ve şık bir oyun kütüphanesi oluşturur.
-*   ⚡ **Tek Tıkla Grafik Modu Kurulumu:** Oyunlarınıza DLSS Enabler, OptiScaler ve Streamline gibi performans artıran ve kare oluşturma (Frame Generation) sağlayan modları güvenli bir şekilde kurar ve yönetir.
+*   ⚡ **Tek Tıkla Grafik Modu Kurulumu:** Oyunlarınıza DLSS Enabler, OptiScaler, OptiBuilder ve Streamline gibi performans artıran ve kare oluşturma (Frame Generation) sağlayan modları güvenli bir şekilde kurar ve yönetir.
+*   🧙 **İnteraktif Kurulum Sihirbazları:** DLSS Enabler, OptiScaler ve OptiBuilder için oyununuza en uygun enjeksiyon türünü ve DLL yapılandırmasını (DXGI, version.dll vb.) adım adım belirleyen akıllı kurulum sihirbazı (Wizard) desteği.
+*   🛠️ **OptiBuilder Entegrasyonu:** Özelleştirilmiş OptiBuilder sürümlerini doğrudan GitHub üzerinden çekin, interaktif terminal sihirbazı ile oyunuza özgü mod derlemelerini kolayca kurun ve yönetin.
 *   🔧 **Otomatik DLSS Enabler Kurulumu:** DLSS Enabler'ı seçilen oyuna birkaç tıklamayla otomatik olarak indirir ve kurar.
 *   📝 **Yapılandırma Dosyası Düzenleyici:** `OptiScaler.ini` ve `dlss-enabler.ini` gibi `.ini` yapılandırma dosyalarını doğrudan program üzerinden kolayca düzenleyin. *(Yakında: Hazır Ayar (Preset) sistemi!)*
 *   🎁 **Ücretsiz Oyunlar & Keyler:** **GamePower Free API** entegrasyonu sayesinde anlık ücretsiz oyunları ve dağıtılan keyleri doğrudan uygulama içinden takip edin.
@@ -57,8 +59,9 @@ V-Manager, günümüzün en popüler upscaler ve kare oluşturma modlarının y�
 
 | Mod Adı | Açıklama | V-Manager Entegrasyonu |
 | :--- | :--- | :--- |
-| **DLSS Enabler** | NVIDIA RTX olmayan ekran kartlarında dahi Multi Frame Generation (Kare Oluşturma) özelliğini aktif hale getirir. | Yerel sürümleri listeleme, otomatik ve manuel kurulum, güvenli kaldırma ve enjeksiyon kontrolü. |
-| **OptiScaler** | DLSS/FSR/XeSS arasında köprü kuran açık kaynaklı ölçeklendirme aracı. | GitHub Releases API üzerinden en güncel sürümleri çekme, otomatik `.7z` indirme, ayıklama ve kurma. |
+| **DLSS Enabler** | NVIDIA RTX olmayan ekran kartlarında dahi Multi Frame Generation (Kare Oluşturma) özelliğini aktif hale getirir. | Yerel sürümleri listeleme, otomatik ve manuel kurulum, interaktif sihirbaz (Wizard), güvenli kaldırma ve enjeksiyon kontrolü. |
+| **OptiScaler** | DLSS/FSR/XeSS arasında köprü kuran açık kaynaklı ölçeklendirme aracı. | GitHub Releases API üzerinden en güncel sürümleri çekme, otomatik `.7z` indirme, ayıklama, akıllı sihirbaz ile kurma. |
+| **OptiBuilder** | OptiScaler ve mod bileşenlerini özelleştirilmiş derlemelerle oluşturan ve yöneten gelişmiş araç. | GitHub üzerinden en güncel sürümleri çekme, otomatik/manuel kurulum, interaktif terminal sihirbazı ve kaldırma desteği. |
 | **Streamline** | NVIDIA'nın Streamline SDK kütüphanelerini yönetir. | Derinlemesine arama (BFS) ile `sl.*.dll` konumunu bulma, güncellemelere karşı yedekleme ve hash doğrulamalı geri yükleme. |
 | **OptiPatcher** | OptiScaler için ek uyumluluk ve stabilite yamaları sağlar. | GitHub üzerinden otomatik sürüm kontrolü ve kurulum desteği. |
 | **FSR4 Dosyaları** | FSR4 mod kütüphaneleri için gerekli dosyaları barındırır. | Harici indirme sunucusundan son sürüm dosyalarını çekebilme imkanı. |
@@ -100,11 +103,11 @@ Projeyi yerel bilgisayarınızda çalıştırmak veya geliştirmek için aşağ�
     npm start
     ```
 
-4.  **Uygulamayı Derleyin (Production Release):**
+4.  **Uygulamayı Derleyin (Yerel Build):**
     ```bash
-    npm run build
+    npm run build:local
     ```
-    *Bu komut, Windows (`x64`) için kurulabilir bir `.exe` yükleyicisi (NSIS) oluşturur ve `dist/` klasörüne kaydeder.*
+    *Bu komut, Windows (`x64`) için yerel kurulabilir bir `.exe` yükleyicisi (NSIS) oluşturur ve `dist/` klasörüne kaydeder. (V8 Bytecode derlemesiyle birlikte paketlemek için `npm run build:compile` kullanabilirsiniz).*
 
 ---
 
@@ -119,17 +122,25 @@ Uygulamanın temel modülleri ve görevleri şu şekildedir:
 ├── styles.css              # Premium modern CSS tasarımı
 ├── src/                    # Uygulama kaynak kodları
 │   └── main/
+│       ├── index.js        # Uygulama yaşam döngüsü & açılış mantığı
 │       ├── config.js       # Yapılandırma, oyun listesi ve yollar
 │       ├── ipc.js          # IPC iletişim kanalları (Main handlers)
+│       ├── license.js      # HWID tabanlı lisans doğrulama
 │       ├── scanner.js      # Çoklu platform oyun tarayıcısı
+│       ├── discord.js      # Discord Rich Presence modülü
+│       ├── updater.js      # Otomatik güncelleme yöneticisi
 │       ├── utils.js        # Dosya hash, sürüm okuma ve API araçları
-│       └── window.js       # BrowserWindow yönetim modülü
-├── mods/                   # Mod yükleme ve kaldırma mantıkları
-│       ├── dlssEnabler.js  # DLSS Enabler yönetimi
-│       ├── optiScaler.js   # OptiScaler otomatik indirici & kurucu
-│       ├── streamline.js   # Streamline yedekleme ve güncelleme sistemi
-│       ├── uninstaller.js  # Güvenli mod kaldırma modülü
-│       └── compressor.js   # Sıkıştırma motoru
+│       ├── window.js       # BrowserWindow yönetim modülü
+│       └── mods/           # Mod yükleme, sihirbaz ve sıkıştırma mantıkları
+│           ├── dlssEnabler.js      # DLSS Enabler yönetimi
+│           ├── dlssWizard.js       # DLSS Enabler akıllı kurulum sihirbazı
+│           ├── optiScaler.js       # OptiScaler otomatik indirici & kurucu
+│           ├── optiWizard.js       # OptiScaler interaktif kurulum sihirbazı
+│           ├── optiBuilder.js      # OptiBuilder yönetimi ve indiricisi
+│           ├── optiBuilderWizard.js # OptiBuilder terminal/sihirbaz arayüzü
+│           ├── streamline.js       # Streamline yedekleme ve güncelleme
+│           ├── uninstaller.js      # Güvenli mod kaldırma modülü
+│           └── compressor.js       # Sıkıştırma motoru
 └── package.json            # Proje bağımlılıkları ve scriptler
 ```
 
@@ -163,7 +174,9 @@ V-Manager brings together many powerful tools that modern gamers need — mod ma
 
 *   🔍 **Advanced Game Scanning:** Automatically detects games from **Steam**, **Epic Games**, **GOG Galaxy**, **Xbox**, **EA App**, and **Ubisoft Connect**. Can also scan the Windows Registry and manually defined folders.
 *   🖼️ **Automatic Cover Art:** Downloads cover images automatically for found games using the **SteamGridDB API**, creating a sleek game library.
-*   ⚡ **One-Click Graphics Mod Installation:** Safely installs and manages performance-enhancing mods with Frame Generation support — including DLSS Enabler, OptiScaler, and Streamline.
+*   ⚡ **One-Click Graphics Mod Installation:** Safely installs and manages performance-enhancing mods with Frame Generation support — including DLSS Enabler, OptiScaler, OptiBuilder, and Streamline.
+*   🧙 **Interactive Installation Wizards:** Smart step-by-step installation wizards for DLSS Enabler, OptiScaler, and OptiBuilder that guide you to select the best injection method and DLL configuration (DXGI, version.dll, etc.) for your specific game.
+*   🛠️ **OptiBuilder Integration:** Fetch customized OptiBuilder releases directly via GitHub, and easily install or manage custom mod builds using an interactive terminal wizard.
 *   🔧 **Automated DLSS Enabler Installation:** Automatically downloads and installs DLSS Enabler to your selected game in just a few clicks.
 *   📝 **Config File Editor:** Edit `.ini` configuration files such as `OptiScaler.ini` and `dlss-enabler.ini` directly through the program. *(Coming soon: Preset system!)*
 *   🎁 **Free Games & Keys:** Track currently free games and distributed keys in real time via the integrated **GamePower Free API** — without ever leaving the app.
@@ -181,8 +194,9 @@ V-Manager simplifies the management of today's most popular upscaler and frame g
 
 | Mod Name | Description | V-Manager Integration |
 | :--- | :--- | :--- |
-| **DLSS Enabler** | Enables Multi Frame Generation even on non-NVIDIA RTX graphics cards. | List local versions, automated & manual install, safe uninstall, and injection control. |
-| **OptiScaler** | An open-source scaling bridge between DLSS, FSR, and XeSS. | Fetches latest releases via GitHub Releases API, with automatic `.7z` download, extraction, and install. |
+| **DLSS Enabler** | Enables Multi Frame Generation even on non-NVIDIA RTX graphics cards. | List local versions, automated & manual install, interactive wizard, safe uninstall, and injection control. |
+| **OptiScaler** | An open-source scaling bridge between DLSS, FSR, and XeSS. | Fetches latest releases via GitHub Releases API, with automatic `.7z` download, extraction, smart wizard install. |
+| **OptiBuilder** | Advanced tool that builds and manages OptiScaler and mod components with customized builds. | Fetches latest versions via GitHub, automated/manual install, interactive terminal wizard, and safe removal. |
 | **Streamline** | Manages NVIDIA's Streamline SDK libraries. | Locates `sl.*.dll` with deep BFS search, backs up before updates, and restores with hash verification. |
 | **OptiPatcher** | Provides additional compatibility and stability patches for OptiScaler. | Automatic version check and installation support via GitHub. |
 | **FSR4 Files** | Hosts the necessary files for FSR4 mod libraries. | Fetches the latest files from an external download server. |
@@ -224,11 +238,11 @@ To run or contribute to the project on your local machine, follow these steps:
     npm start
     ```
 
-4.  **Build for Production:**
+4.  **Build for Production (Local Build):**
     ```bash
-    npm run build
+    npm run build:local
     ```
-    *This command creates an installable `.exe` (NSIS) for Windows (`x64`) and saves it to the `dist/` folder.*
+    *This command creates a local installable `.exe` (NSIS) for Windows (`x64`) and saves it to the `dist/` folder. (You can also use `npm run build:compile` to bundle with V8 Bytecode compilation).*
 
 ---
 
@@ -243,17 +257,25 @@ The core modules of the application and their responsibilities:
 ├── styles.css              # Premium modern CSS design
 ├── src/                    # Application source code
 │   └── main/
+│       ├── index.js        # Application lifecycle & bootstrap logic
 │       ├── config.js       # Configuration, game list, and paths
 │       ├── ipc.js          # IPC communication channels (Main handlers)
+│       ├── license.js      # HWID-based license verification
 │       ├── scanner.js      # Multi-platform game scanner
+│       ├── discord.js      # Discord Rich Presence module
+│       ├── updater.js      # Auto-updater manager
 │       ├── utils.js        # File hash, version reading, and API utilities
-│       └── window.js       # BrowserWindow management module
-├── mods/                   # Mod install and uninstall logic
-│       ├── dlssEnabler.js  # DLSS Enabler manager
-│       ├── optiScaler.js   # OptiScaler auto-downloader & installer
-│       ├── streamline.js   # Streamline backup and update system
-│       ├── uninstaller.js  # Safe mod removal module
-│       └── compressor.js   # Compression engine
+│       ├── window.js       # BrowserWindow management module
+│       └── mods/           # Mod installation, wizards, and compression logic
+│           ├── dlssEnabler.js      # DLSS Enabler manager
+│           ├── dlssWizard.js       # DLSS Enabler smart installation wizard
+│           ├── optiScaler.js       # OptiScaler auto-downloader & installer
+│           ├── optiWizard.js       # OptiScaler interactive wizard
+│           ├── optiBuilder.js      # OptiBuilder manager & downloader
+│           ├── optiBuilderWizard.js # OptiBuilder terminal/wizard UI handler
+│           ├── streamline.js       # Streamline backup and update system
+│           ├── uninstaller.js      # Safe mod removal module
+│           └── compressor.js       # Compression engine
 └── package.json            # Project dependencies and scripts
 ```
 
