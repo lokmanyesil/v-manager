@@ -121,10 +121,33 @@ async function getFsr4Releases() {
 }
 
 async function downloadFsr4Release(event, { name, downloadUrl }) {
-    const is7z = downloadUrl.toLowerCase().endsWith('.7z');
+    const targetDir = path.join(config.modsPath, 'fsr4files', name);
+
+    // Zaten indirilmiş mi kontrol et
+    const candidateDirs = [
+        targetDir,
+        path.join(config.modsPath, 'fsr4files', name.replace(/^v/i, '')),
+        path.join(config.modsPath, 'fsr4files', `v${name.replace(/^v/i, '')}`)
+    ];
+
+    for (const cand of candidateDirs) {
+        if (fs.existsSync(cand)) {
+            try {
+                const files = fs.readdirSync(cand).filter(f => !f.startsWith('download_') && !f.startsWith('extract_'));
+                if (files.length > 0) {
+                    console.log(`[FSR4] Sürüm zaten indirilmiş: ${cand}`);
+                    if (event && event.sender && !event.sender.isDestroyed()) {
+                        event.sender.send('fsr4-download-progress', { percent: 100 });
+                    }
+                    return { success: true, targetDir: cand, alreadyExists: true };
+                }
+            } catch (e) {}
+        }
+    }
+
+    const is7z = downloadUrl ? downloadUrl.toLowerCase().endsWith('.7z') : false;
     const ext = is7z ? '.7z' : '.zip';
     const tempZipPath = path.join(app.getPath('temp'), `fsr4_${name.replace(/[^a-z0-9.-]/gi, '_')}${ext}`);
-    const targetDir = path.join(config.modsPath, 'fsr4files', name);
 
     try {
         if (!downloadUrl) throw new Error("İndirme linki bulunamadı.");

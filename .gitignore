@@ -35,13 +35,13 @@ app/dist/
 build-tmp/
 
 # Lisanslama ve Derleme Araçları / GİZLİ ANAHTARLAR (Asla commit etme!)
-tools/
-tools/*
-tools/*.pem
-tools/private.pem
-tools/public.pem
-tools/compile.js
-tools/generator.js
+/tools/
+/tools/*
+/tools/*.pem
+/tools/private.pem
+/tools/public.pem
+/tools/compile.js
+/tools/generator.js
 license.dat
 key-olustur.bat
 

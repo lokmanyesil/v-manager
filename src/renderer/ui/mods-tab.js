@@ -4,13 +4,38 @@ import { showInfoModal, showConfirmDialog } from './modals/info.js';
 
 // Controller State
 let currentMod = 'dlssenabler'; // default mod tab
-let releasesData = {}; // cache release info per mod
-let activeDownload = null; // { modName, tag, name, downloadUrl }
+let releasesData = {}; // cache release info per mod: { [modId]: { releases, fetchedAt, fromStaleCache } }
+let activeDownload = null; // { modName, tag, name, downloadUrl, progressText }
 const downloadQueue = []; // array of queue items
 const failedDownloads = {}; // key: modName-tag -> errorMsg
 
-export function initModsTab() {
-    // 1. Tab switches listeners
+/**
+ * Initializes the entire Mods tab and dynamic sub-navigation.
+ */
+export async function initModsTab() {
+    // 0. Sub-Tab navigation for Mods (Mod Sürümleri vs Manifest Oluşturucu)
+    const modsSubNavItems = document.querySelectorAll('.mods-sub-nav-item');
+    const modsSubTabContents = document.querySelectorAll('.mods-sub-tab-content');
+
+    modsSubNavItems.forEach(item => {
+        item.addEventListener('click', async () => {
+            const targetId = item.getAttribute('data-mods-sub-target');
+            modsSubNavItems.forEach(i => i.classList.remove('active'));
+            item.classList.add('active');
+            modsSubTabContents.forEach(content => {
+                content.style.display = content.id === targetId ? 'block' : 'none';
+            });
+
+            if (targetId === 'mods-sub-builder') {
+                document.dispatchEvent(new CustomEvent('tab-activated', { detail: { tabId: 'manifest-builder' } }));
+            } else if (targetId === 'mods-sub-versions') {
+                await renderModTabsNav();
+                await loadModReleases(false);
+            }
+        });
+    });
+
+    // 1. Tab switches listeners (Delegated click for dynamic buttons)
     const tabNav = document.getElementById('mods-tabs-nav');
     if (tabNav) {
         tabNav.addEventListener('click', async (e) => {
@@ -29,7 +54,7 @@ export function initModsTab() {
         });
     }
 
-    // 2. Refresh button listener
+    // 2. Refresh button listener (Force GitHub API refresh with 1-hour cache invalidation)
     const refreshBtn = document.getElementById('mods-refresh-btn');
     if (refreshBtn) {
         refreshBtn.addEventListener('click', () => {
@@ -39,16 +64,91 @@ export function initModsTab() {
         });
     }
 
-    // 3. Tab activation listener (from main navigation)
+    // 3. Tab activation listener (from main sidebar / header navigation)
     document.addEventListener('tab-activated', async (e) => {
         if (e.detail && e.detail.tabId === 'modes') {
-            await loadModReleases(false);
+            const activeSub = document.querySelector('.mods-sub-nav-item.active');
+            const targetId = activeSub ? activeSub.getAttribute('data-mods-sub-target') : 'mods-sub-versions';
+            if (targetId === 'mods-sub-builder') {
+                document.dispatchEvent(new CustomEvent('tab-activated', { detail: { tabId: 'manifest-builder' } }));
+            } else {
+                await renderModTabsNav();
+                await loadModReleases(false);
+            }
         }
     });
+
+    // 4. Manifest list changed listener (re-render tabs on the fly when user saves/deletes custom manifests)
+    document.addEventListener('manifests-updated', async () => {
+        await renderModTabsNav();
+    });
+
+    // Initial render of tabs
+    await renderModTabsNav();
 }
 
 /**
- * Loads release versions for the active mod.
+ * Dynamically queries all loaded manifests (Official, Community, Custom)
+ * and renders the horizontal sub-tab bar (#mods-tabs-nav).
+ */
+export async function renderModTabsNav() {
+    const tabNav = document.getElementById('mods-tabs-nav');
+    if (!tabNav) return;
+
+    let modules = [];
+    if (window.electronAPI && window.electronAPI.moduleList) {
+        try {
+            modules = await window.electronAPI.moduleList();
+        } catch (e) {
+            console.warn('[ModsTab] moduleList fetch error:', e);
+        }
+    }
+
+    // Fallback if no modules returned
+    if (!modules || modules.length === 0) {
+        modules = [
+            { id: 'dlssenabler', name: 'DLSS Enabler', type: 'official' },
+            { id: 'optiscaler', name: 'OptiScaler', type: 'official' },
+            { id: 'optibuilder', name: 'OptiBuilder', type: 'official' },
+            { id: 'optipatcher', name: 'OptiPatcher', type: 'official' },
+            { id: 'fsr4', name: 'FSR4 Dosyaları', type: 'official' },
+            { id: 'streamline', name: 'Streamline', type: 'official' }
+        ];
+    }
+
+    // Sort order: Official prominent mods first, then other official, then community, then custom
+    const preferredOrder = ['dlssenabler', 'optiscaler', 'optibuilder', 'optipatcher', 'fsr4', 'streamline'];
+    modules.sort((a, b) => {
+        const aIdx = preferredOrder.indexOf(a.id);
+        const bIdx = preferredOrder.indexOf(b.id);
+        if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+        if (aIdx !== -1) return -1;
+        if (bIdx !== -1) return 1;
+
+        // By type: official -> community -> custom
+        const typeScore = { official: 1, community: 2, custom: 3 };
+        const scoreDiff = (typeScore[a.type] || 2) - (typeScore[b.type] || 2);
+        if (scoreDiff !== 0) return scoreDiff;
+
+        return (a.name || a.id).localeCompare(b.name || b.id);
+    });
+
+    // Ensure currentMod is in the module list
+    const hasCurrent = modules.some(m => m.id === currentMod);
+    if (!hasCurrent && modules.length > 0) {
+        currentMod = modules[0].id;
+    }
+
+    tabNav.innerHTML = modules.map(mod => {
+        const isActive = mod.id === currentMod;
+        const iconPrefix = mod.type === 'custom' ? '⚡ ' : (mod.type === 'community' ? '👥 ' : '');
+        const displayName = (mod.id === 'fsr4') ? t('mods.fsr4Title') : (mod.name || mod.id);
+        return `<button class="mods-tab-btn ${isActive ? 'active' : ''}" data-mod="${mod.id}">${iconPrefix}${displayName}</button>`;
+    }).join('');
+}
+
+/**
+ * Loads release versions for the active mod using the unified manifest system.
  * @param {boolean} forceRefresh - Bypasses cache if true
  * @param {boolean} silent - If true, skips loading skeleton render
  */
@@ -65,25 +165,33 @@ export async function loadModReleases(forceRefresh = false, silent = false) {
 
     try {
         let result;
-        if (currentMod === 'dlssenabler') {
-            result = await window.electronAPI.getDlssEnablerReleases(forceRefresh);
-        } else if (currentMod === 'optiscaler') {
-            result = await window.electronAPI.getOptiScalerReleases(forceRefresh);
-        } else if (currentMod === 'optibuilder') {
-            result = await window.electronAPI.getOptiBuilderReleases(forceRefresh);
-        } else if (currentMod === 'optipatcher') {
-            result = await window.electronAPI.getOptiPatcherReleases(forceRefresh);
-        } else if (currentMod === 'fsr4') {
-            result = await window.electronAPI.getFsr4Releases(forceRefresh);
-        } else if (currentMod === 'streamline') {
-            result = await window.electronAPI.getStreamlineReleases(forceRefresh);
+        // Try unified manifest release fetcher first
+        if (window.electronAPI && window.electronAPI.moduleGetReleases) {
+            result = await window.electronAPI.moduleGetReleases({ moduleId: currentMod, forceRefresh });
         }
 
-        if (result.error) throw new Error(result.error);
+        // Fallback to legacy APIs if manifest release fetcher fails or is not available
+        if (!result || result.error || !result.success) {
+            if (currentMod === 'dlssenabler' && window.electronAPI.getDlssEnablerReleases) {
+                result = await window.electronAPI.getDlssEnablerReleases(forceRefresh);
+            } else if (currentMod === 'optiscaler' && window.electronAPI.getOptiScalerReleases) {
+                result = await window.electronAPI.getOptiScalerReleases(forceRefresh);
+            } else if (currentMod === 'optibuilder' && window.electronAPI.getOptiBuilderReleases) {
+                result = await window.electronAPI.getOptiBuilderReleases(forceRefresh);
+            } else if (currentMod === 'optipatcher' && window.electronAPI.getOptiPatcherReleases) {
+                result = await window.electronAPI.getOptiPatcherReleases(forceRefresh);
+            } else if (currentMod === 'fsr4' && window.electronAPI.getFsr4Releases) {
+                result = await window.electronAPI.getFsr4Releases(forceRefresh);
+            } else if (currentMod === 'streamline' && window.electronAPI.getStreamlineReleases) {
+                result = await window.electronAPI.getStreamlineReleases(forceRefresh);
+            }
+        }
 
-        const releases = result.releases ?? result;
-        const fetchedAt = result.fetchedAt ?? null;
-        const fromStaleCache = result.fromStaleCache ?? false;
+        if (result && result.error) throw new Error(result.error);
+
+        const releases = result?.releases ?? [];
+        const fetchedAt = result?.fetchedAt ?? null;
+        const fromStaleCache = result?.fromStaleCache ?? false;
 
         // Store in local data cache
         releasesData[currentMod] = {
@@ -98,8 +206,8 @@ export async function loadModReleases(forceRefresh = false, silent = false) {
         // Update cache age span
         if (cacheAgeSpan && fetchedAt) {
             const ageText = formatCacheAge(fetchedAt);
-            const staleText = fromStaleCache ? `[${t('releaseCache.fromStaleCache')}] ` : '';
-            cacheAgeSpan.innerHTML = `${staleText}${t('releaseCache.lastUpdated')} <strong>${ageText}</strong>`;
+            const staleText = fromStaleCache ? `[${t('releaseCache.fromStaleCache') || 'Önbellek'}] ` : '';
+            cacheAgeSpan.innerHTML = `${staleText}${t('releaseCache.lastUpdated') || 'Son güncelleme:'} <strong>${ageText}</strong>`;
         }
 
         if (loadingDiv) loadingDiv.style.display = 'none';
@@ -130,7 +238,7 @@ function renderReleases() {
     if (!activeData || !activeData.releases || activeData.releases.length === 0) {
         container.innerHTML = `
             <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--text-secondary);">
-                ${t('modsTab.noVersions')}
+                ${t('modsTab.noVersions') || 'Kullanılabilir sürüm bulunamadı.'}
             </div>
         `;
         return;
@@ -151,7 +259,7 @@ function renderReleases() {
             try {
                 const date = new Date(r.publishedAt);
                 dateStr = date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-            } catch(e){}
+            } catch (e) {}
         }
 
         // Create card element
@@ -168,7 +276,7 @@ function renderReleases() {
                     ${sizeStr && dateStr ? '<span class="meta-dot">•</span>' : ''}
                     ${dateStr ? `<span class="version-date">${dateStr}</span>` : ''}
                 </div>
-                ${r.installed ? `<span class="version-badge active">✔ ${t('modsTab.installed')}</span>` : ''}
+                ${r.installed ? `<span class="version-badge active">✔ ${t('modsTab.installed') || 'Yüklendi'}</span>` : ''}
             </div>
             <div class="version-actions"></div>
         `;
@@ -184,7 +292,7 @@ function renderReleases() {
             // Open Folder button
             const openBtn = document.createElement('button');
             openBtn.className = 'version-action-btn open-folder';
-            openBtn.title = t('modsTab.openFolder');
+            openBtn.title = t('modsTab.openFolder') || 'Klasörü Aç';
             openBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>`;
             openBtn.addEventListener('click', async (e) => {
                 e.stopPropagation();
@@ -194,11 +302,10 @@ function renderReleases() {
             // Delete button
             const deleteBtn = document.createElement('button');
             deleteBtn.className = 'version-action-btn delete';
-            deleteBtn.title = t('modsTab.delete');
+            deleteBtn.title = t('modsTab.delete') || 'Sil';
             deleteBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`;
             deleteBtn.addEventListener('click', async (e) => {
                 e.stopPropagation();
-                console.log('[mods-tab.js] deleteBtn click: modName =', currentMod, 'name =', r.name, 'tag =', r.tag, 'computed tag =', tag);
                 const confirmed = await showConfirmDialog(
                     t('modsTab.deleteConfirmTitle') || 'Sürümü Sil',
                     (t('modsTab.deleteConfirmMsg') || '"{version}" sürümünü silmek istediğinize emin misiniz?').replace('{version}', r.name || tag)
@@ -225,8 +332,8 @@ function renderReleases() {
             // Waiting in queue state
             const waitingBtn = document.createElement('button');
             waitingBtn.className = 'version-action-btn waiting';
-            waitingBtn.title = t('modsTab.waitingTooltip');
-            waitingBtn.textContent = t('modsTab.waiting');
+            waitingBtn.title = t('modsTab.waitingTooltip') || 'İndirme kuyruğunda bekliyor. İptal etmek için tıklayın.';
+            waitingBtn.textContent = t('modsTab.waiting') || 'Sırada';
             waitingBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 removeFromQueue(currentMod, tag);
@@ -236,11 +343,10 @@ function renderReleases() {
             // Failed state, show Retry
             const retryBtn = document.createElement('button');
             retryBtn.className = 'version-action-btn retry-btn';
-            retryBtn.title = t('modsTab.retryTooltip').replace('{error}', failMsg);
-            retryBtn.textContent = t('modsTab.retry');
+            retryBtn.title = (t('modsTab.retryTooltip') || 'Hata: {error}. Tekrar denemek için tıklayın.').replace('{error}', failMsg);
+            retryBtn.textContent = t('modsTab.retry') || 'Tekrar Dene';
             retryBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                // Clear failure and add to queue
                 delete failedDownloads[`${currentMod}-${tag}`];
                 addToQueue(currentMod, r);
             });
@@ -249,7 +355,7 @@ function renderReleases() {
             // Default download button
             const downloadBtn = document.createElement('button');
             downloadBtn.className = 'version-action-btn download-btn';
-            downloadBtn.title = t('modsTab.download');
+            downloadBtn.title = t('modsTab.download') || 'İndir';
             downloadBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>`;
             downloadBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -282,7 +388,7 @@ function addToQueue(modName, release) {
         startDownload(queueItem);
     } else {
         downloadQueue.push(queueItem);
-        // Silent reload/refresh of tab view if current mod matches queue mod
+        // Silent reload of tab view if current mod matches queue mod
         if (currentMod === modName) {
             renderReleases();
         }
@@ -318,15 +424,15 @@ async function startDownload(item) {
     activeDownload = item;
     activeDownload.progressText = '%0';
 
-    // Rerender tab to reflect active state
+    // Rerender tab to reflect active downloading state
     if (currentMod === item.modName) {
         renderReleases();
     }
 
     const progressCallback = (data) => {
-        if (activeDownload && activeDownload.modName === item.modName && activeDownload.tag === item.tag) {
+        if (activeDownload && activeDownload.modName === (data.moduleId || item.modName)) {
             if (data.stage === 'extracting') {
-                activeDownload.progressText = t('modsTab.extracting');
+                activeDownload.progressText = t('modsTab.extracting') || 'Açılıyor...';
             } else {
                 activeDownload.progressText = `%${data.percent || 0}`;
             }
@@ -342,41 +448,59 @@ async function startDownload(item) {
         }
     };
 
-    // Bind correct progress listener based on mod type
-    if (item.modName === 'dlssenabler') {
+    // Bind unified module download progress listener
+    if (window.electronAPI && window.electronAPI.onModuleDownloadProgress) {
+        window.electronAPI.removeModuleDownloadProgressListeners();
+        window.electronAPI.onModuleDownloadProgress(progressCallback);
+    }
+
+    // Also bind legacy progress listeners for backwards compatibility
+    if (item.modName === 'dlssenabler' && window.electronAPI.onDlssEnablerDownloadProgress) {
         window.electronAPI.removeDlssEnablerProgressListeners();
         window.electronAPI.onDlssEnablerDownloadProgress(progressCallback);
-    } else if (item.modName === 'optiscaler') {
+    } else if (item.modName === 'optiscaler' && window.electronAPI.onOptiscalerDownloadProgress) {
         window.electronAPI.removeOptiScalerProgressListeners();
         window.electronAPI.onOptiscalerDownloadProgress(progressCallback);
-    } else if (item.modName === 'optibuilder') {
+    } else if (item.modName === 'optibuilder' && window.electronAPI.onOptiBuilderDownloadProgress) {
         window.electronAPI.removeOptiBuilderProgressListeners();
         window.electronAPI.onOptiBuilderDownloadProgress(progressCallback);
-    } else if (item.modName === 'optipatcher') {
+    } else if (item.modName === 'optipatcher' && window.electronAPI.onOptipatcherDownloadProgress) {
         window.electronAPI.removeOptiPatcherProgressListeners();
         window.electronAPI.onOptipatcherDownloadProgress(progressCallback);
-    } else if (item.modName === 'fsr4') {
+    } else if (item.modName === 'fsr4' && window.electronAPI.onFsr4DownloadProgress) {
         window.electronAPI.removeFsr4ProgressListeners();
         window.electronAPI.onFsr4DownloadProgress(progressCallback);
-    } else if (item.modName === 'streamline') {
+    } else if (item.modName === 'streamline' && window.electronAPI.onStreamlineDownloadProgress) {
         window.electronAPI.removeStreamlineProgressListeners();
         window.electronAPI.onStreamlineDownloadProgress(progressCallback);
     }
 
     try {
         let result;
-        if (item.modName === 'dlssenabler') {
-            result = await window.electronAPI.downloadDlssEnablerRelease({ name: item.name, downloadUrl: item.downloadUrl });
-        } else if (item.modName === 'optiscaler') {
-            result = await window.electronAPI.downloadOptiScalerRelease({ tag: item.tag, downloadUrl: item.downloadUrl });
-        } else if (item.modName === 'optibuilder') {
-            result = await window.electronAPI.downloadOptiBuilderRelease({ tag: item.tag, downloadUrl: item.downloadUrl });
-        } else if (item.modName === 'optipatcher') {
-            result = await window.electronAPI.downloadOptiPatcherRelease({ tag: item.tag, downloadUrl: item.downloadUrl });
-        } else if (item.modName === 'fsr4') {
-            result = await window.electronAPI.downloadFsr4Release({ name: item.name, downloadUrl: item.downloadUrl });
-        } else if (item.modName === 'streamline') {
-            result = await window.electronAPI.downloadStreamlineRelease({ tag: item.tag, downloadUrl: item.downloadUrl });
+        // Try unified manifest download first
+        if (window.electronAPI && window.electronAPI.moduleDownloadRelease) {
+            result = await window.electronAPI.moduleDownloadRelease({
+                moduleId: item.modName,
+                tag: item.tag,
+                downloadUrl: item.downloadUrl
+            });
+        }
+
+        // Fallback to legacy APIs if moduleDownloadRelease fails or is unavailable
+        if (!result || !result.success) {
+            if (item.modName === 'dlssenabler' && window.electronAPI.downloadDlssEnablerRelease) {
+                result = await window.electronAPI.downloadDlssEnablerRelease({ name: item.name, downloadUrl: item.downloadUrl });
+            } else if (item.modName === 'optiscaler' && window.electronAPI.downloadOptiScalerRelease) {
+                result = await window.electronAPI.downloadOptiScalerRelease({ tag: item.tag, downloadUrl: item.downloadUrl });
+            } else if (item.modName === 'optibuilder' && window.electronAPI.downloadOptiBuilderRelease) {
+                result = await window.electronAPI.downloadOptiBuilderRelease({ tag: item.tag, downloadUrl: item.downloadUrl });
+            } else if (item.modName === 'optipatcher' && window.electronAPI.downloadOptiPatcherRelease) {
+                result = await window.electronAPI.downloadOptiPatcherRelease({ tag: item.tag, downloadUrl: item.downloadUrl });
+            } else if (item.modName === 'fsr4' && window.electronAPI.downloadFsr4Release) {
+                result = await window.electronAPI.downloadFsr4Release({ name: item.name, downloadUrl: item.downloadUrl });
+            } else if (item.modName === 'streamline' && window.electronAPI.downloadStreamlineRelease) {
+                result = await window.electronAPI.downloadStreamlineRelease({ tag: item.tag, downloadUrl: item.downloadUrl });
+            }
         }
 
         cleanupProgressListeners(item.modName);
@@ -385,12 +509,12 @@ async function startDownload(item) {
             // Success! Remove from failed list if it was there
             delete failedDownloads[`${item.modName}-${item.tag}`];
             
-            // Reload list silent to see installed folder
+            // Reload list silent to reflect installed badge & open folder actions
             if (currentMod === item.modName) {
                 await loadModReleases(false, true);
             }
         } else {
-            failedDownloads[`${item.modName}-${item.tag}`] = result ? result.error : t('updates.unknownError');
+            failedDownloads[`${item.modName}-${item.tag}`] = result ? result.error : (t('updates.unknownError') || 'Bilinmeyen hata');
             if (currentMod === item.modName) {
                 renderReleases();
             }
@@ -403,16 +527,19 @@ async function startDownload(item) {
         }
     } finally {
         activeDownload = null;
-        // Process next item in queue
+        // Process next item in download queue
         processQueue();
     }
 }
 
 function cleanupProgressListeners(modName) {
-    if (modName === 'dlssenabler') window.electronAPI.removeDlssEnablerProgressListeners();
-    else if (modName === 'optiscaler') window.electronAPI.removeOptiScalerProgressListeners();
-    else if (modName === 'optibuilder') window.electronAPI.removeOptiBuilderProgressListeners();
-    else if (modName === 'optipatcher') window.electronAPI.removeOptiPatcherProgressListeners();
-    else if (modName === 'fsr4') window.electronAPI.removeFsr4ProgressListeners();
-    else if (modName === 'streamline') window.electronAPI.removeStreamlineProgressListeners();
+    if (window.electronAPI && window.electronAPI.removeModuleDownloadProgressListeners) {
+        window.electronAPI.removeModuleDownloadProgressListeners();
+    }
+    if (modName === 'dlssenabler' && window.electronAPI.removeDlssEnablerProgressListeners) window.electronAPI.removeDlssEnablerProgressListeners();
+    else if (modName === 'optiscaler' && window.electronAPI.removeOptiScalerProgressListeners) window.electronAPI.removeOptiScalerProgressListeners();
+    else if (modName === 'optibuilder' && window.electronAPI.removeOptiBuilderProgressListeners) window.electronAPI.removeOptiBuilderProgressListeners();
+    else if (modName === 'optipatcher' && window.electronAPI.removeOptiPatcherProgressListeners) window.electronAPI.removeOptiPatcherProgressListeners();
+    else if (modName === 'fsr4' && window.electronAPI.removeFsr4ProgressListeners) window.electronAPI.removeFsr4ProgressListeners();
+    else if (modName === 'streamline' && window.electronAPI.removeStreamlineProgressListeners) window.electronAPI.removeStreamlineProgressListeners();
 }

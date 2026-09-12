@@ -15,8 +15,32 @@ let hasStreamlineWarningPending = false;
 
 export async function openWizardModal(game, version, dllName, exePath, downloadUrl) {
     if (isWizardRunning) return;
+    if (!game) return;
     closeAttempts = 0;
     cancelRequested = false;
+
+    // Defensive fallback: ensure version, dllName, and exePath are properly populated
+    version = version || game.dlssEnablerVersion || 'latest';
+    dllName = dllName || 'version.dll';
+
+    if (!exePath || !exePath.toLowerCase().endsWith('.exe')) {
+        if (window.electronAPI && window.electronAPI.resolveGamePaths && game.name) {
+            try {
+                const paths = await window.electronAPI.resolveGamePaths(game.name, game.exePath || game.exe_path);
+                if (paths && paths.exe_path && paths.exe_path.toLowerCase().endsWith('.exe')) {
+                    exePath = paths.exe_path;
+                }
+            } catch (e) {
+                console.error('[DLSS_WIZARD_UI] resolveGamePaths error:', e);
+            }
+        }
+        if (!exePath && (game.exePath || game.exe_path)) {
+            const candidate = game.exePath || game.exe_path;
+            if (candidate.toLowerCase().endsWith('.exe')) {
+                exePath = candidate;
+            }
+        }
+    }
 
     const wizardModal = document.getElementById('dlss-wizard-modal');
     const infoGame = document.getElementById('wizard-info-game');

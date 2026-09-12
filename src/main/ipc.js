@@ -92,7 +92,14 @@ function registerIpcHandlers() {
     });
 
     ipcMain.handle('launch-game', async (event, game) => {
-        return await require('./mods/launcher').launchGame(game);
+        const result = await require('./mods/launcher').launchGame(game);
+        if (result && result.success) {
+            config.addRecentGame(game);
+            try {
+                require('./tray').updateTrayMenu();
+            } catch (e) {}
+        }
+        return result;
     });
 
     // Scanner
@@ -110,6 +117,33 @@ function registerIpcHandlers() {
             if (!event.sender.isDestroyed()) {
                 event.sender.send('scan-complete');
             }
+        }
+    });
+
+    // Single-game refresh — sadece o oyunu yeniden tara, cover yenileme
+    ipcMain.handle('refresh-single-game', async (event, gameData) => {
+        if (isScanning) {
+            return { exists: true, success: false, error: 'scan_in_progress' };
+        }
+        const gameRoot = gameData.gameRoot || path.dirname(gameData.exePath || '');
+        if (!gameRoot || !fs.existsSync(gameRoot)) {
+            return { exists: false };
+        }
+        try {
+            // cover'ı koru — yeniden indirme, mevcut değeri geçir
+            await scanner.processAndStreamGame({
+                name: gameData.name,
+                exePath: gameData.exePath,
+                gameRoot: gameRoot,
+                source: gameData.source || 'manual',
+                launcherId: gameData.launcherId || null,
+                cover: gameData.cover || null,
+                coverUrl: null // kapak yenilenmesini engelle
+            }, event);
+            return { exists: true, success: true };
+        } catch (err) {
+            console.error('[IPC] refresh-single-game error:', err);
+            return { exists: true, success: false, error: err.message };
         }
     });
 
@@ -359,7 +393,18 @@ function registerIpcHandlers() {
 
         return new Promise((resolve) => {
             const psCommand = `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; ` +
-                `$gpu = ''; try { $gpu = (Get-CimInstance Win32_VideoController | Select-Object -First 1).Name } catch {}; ` +
+                `$gpu = ''; try { ` +
+                `  $gpus = Get-CimInstance Win32_VideoController | Where-Object { $_.Status -eq 'OK' } | Select-Object Name, AdapterRAM; ` +
+                `  $discretePatterns = 'NVIDIA GeForce|NVIDIA RTX|NVIDIA Quadro|NVIDIA T\\d|AMD Radeon RX|AMD Radeon Pro|Radeon\\(TM\\)\\s*RX|Intel\\(R\\)\\s*Arc A\\d'; ` +
+                `  $discrete = $gpus | Where-Object { $_.Name -match $discretePatterns }; ` +
+                `  if ($discrete) { ` +
+                `    $gpu = ($discrete | Select-Object -First 1).Name ` +
+                `  } else { ` +
+                `    $integratedPatterns = 'Intel\\(R\\)\\s*(HD|UHD|Iris)|Radeon\\(TM\\)\\s*Graphics$|Vega\\s*\\d*\\s*Graphics$'; ` +
+                `    $nonIntegrated = $gpus | Where-Object { $_.Name -notmatch $integratedPatterns }; ` +
+                `    $gpu = if ($nonIntegrated) { ($nonIntegrated | Select-Object -First 1).Name } else { ($gpus | Select-Object -First 1).Name } ` +
+                `  } ` +
+                `} catch {}; ` +
                 `$cpu = ''; try { $cpu = (Get-CimInstance Win32_Processor | Select-Object -First 1).Name } catch {}; ` +
                 `$ramGb = '0'; try { $ramGb = [Math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB) } catch {}; ` +
                 `$d3d12Max = 0; ` +
@@ -771,19 +816,109 @@ function registerIpcHandlers() {
         }
     });
 
-    // YouTube RSS Feed Fetcher
+    // YouTube RSS Feed Fetcher with automatic HTML fallback scraper
     ipcMain.handle('fetch-youtube-videos', async () => {
+        const channelId = 'UCCeWDMKoZfZSNOn0pRIGBcw';
+        const rssUrl = `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`;
+        console.log('[IPC Debug] Attempting YouTube RSS feed fetch from:', rssUrl);
+        
+        // Attempt 1: Fetch via RSS feed
+        try {
+            const xml = await new Promise((resolve, reject) => {
+                const options = {
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                    }
+                };
+                https.get(rssUrl, options, (res) => {
+                    console.log('[IPC Debug] YouTube RSS response status:', res.statusCode);
+                    if (res.statusCode !== 200) {
+                        return reject(new Error(`YouTube RSS returned HTTP status ${res.statusCode}`));
+                    }
+                    let data = '';
+                    res.on('data', (chunk) => data += chunk);
+                    res.on('end', () => resolve(data));
+                }).on('error', reject);
+            });
+            console.log('[IPC Debug] Standard RSS fetch succeeded (data length: %d bytes)', xml.length);
+            return xml;
+        } catch (err) {
+            console.warn('[IPC Debug] Standard RSS fetch failed (%s). Attempting fallback channel page scraper...', err.message);
+        }
+
+        // Attempt 2: Scrape channel HTML page directly when YouTube RSS feed returns 404 or fails
         return new Promise((resolve, reject) => {
-            const url = 'https://www.youtube.com/feeds/videos.xml?channel_id=UCCeWDMKoZfZSNOn0pRIGBcw';
-            https.get(url, (res) => {
+            const htmlUrl = `https://www.youtube.com/channel/${channelId}/videos`;
+            console.log('[IPC Debug] Fetching channel videos HTML page from:', htmlUrl);
+            const options = {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+                    'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7'
+                }
+            };
+
+            https.get(htmlUrl, options, (res) => {
                 let data = '';
-                res.on('data', (chunk) => {
-                    data += chunk;
-                });
+                res.on('data', (chunk) => data += chunk);
                 res.on('end', () => {
-                    resolve(data);
+                    const videoItems = [];
+                    // Extract videoId + title pairs from YouTube lockupViewModel blocks
+                    const blocks = data.split('lockupViewModel":');
+                    const seen = new Set();
+
+                    for (let i = 1; i < blocks.length; i++) {
+                        const block = blocks[i];
+                        const idMatch = block.match(/"videoId":"([a-zA-Z0-9_-]{11})"/);
+                        const titleMatch = block.match(/"lockupMetadataViewModel":\{"title":\{"content":"([^"]+)"\}/) ||
+                                           block.match(/"title":\{"content":"([^"]+)"\}/) ||
+                                           block.match(/"title":\{"runs":\[\{"text":"([^"]+)"\}\]/);
+                        if (idMatch && titleMatch) {
+                            const id = idMatch[1];
+                            const rawTitle = titleMatch[1] || titleMatch[2] || titleMatch[3];
+                            // Decode unicode escape sequences like \u0026 -> &
+                            const cleanTitle = rawTitle.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+                            if (!seen.has(id)) {
+                                seen.add(id);
+                                videoItems.push({ videoId: id, title: cleanTitle });
+                            }
+                        }
+                    }
+
+                    // Fallback to videoId extraction if lockupViewModel matching fails
+                    if (videoItems.length === 0) {
+                        const idMatches = [...data.matchAll(/"videoId":"([a-zA-Z0-9_-]{11})"/g)].map(m => m[1]);
+                        for (const id of idMatches) {
+                            if (!seen.has(id)) {
+                                seen.add(id);
+                                videoItems.push({ videoId: id, title: 'YouTube Video' });
+                            }
+                        }
+                    }
+
+                    console.log(`[IPC Debug] Fallback successfully extracted ${videoItems.length} videos with real titles from YouTube HTML.`);
+
+                    if (videoItems.length === 0) {
+                        return reject(new Error('No videos found on YouTube channel page'));
+                    }
+
+                    // Construct XML response for renderer DOMParser
+                    let xml = `<?xml version="1.0" encoding="UTF-8"?>\n<feed xmlns:yt="http://www.youtube.com/xml/schemas/2015" xmlns="http://www.w3.org/2005/Atom">\n`;
+                    xml += ` <link rel="self" href="${rssUrl}"/>\n`;
+                    xml += ` <id>yt:channel:${channelId}</id>\n`;
+                    xml += ` <title>VuenXx YouTube</title>\n`;
+                    for (const v of videoItems) {
+                        xml += ` <entry>\n`;
+                        xml += `  <id>yt:video:${v.videoId}</id>\n`;
+                        xml += `  <yt:videoId>${v.videoId}</yt:videoId>\n`;
+                        xml += `  <title>${v.title.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</title>\n`;
+                        xml += `  <link rel="alternate" href="https://www.youtube.com/watch?v=${v.videoId}"/>\n`;
+                        xml += ` </entry>\n`;
+                    }
+                    xml += `</feed>`;
+                    resolve(xml);
                 });
             }).on('error', (err) => {
+                console.error('[IPC Debug] Channel HTML scraper failed:', err);
                 reject(err);
             });
         });
@@ -1033,7 +1168,12 @@ function registerIpcHandlers() {
             } else if (modName === 'streamline') {
                 targetDir = path.join(config.streamlineModsPath, folderName);
             } else {
-                throw new Error(`Unknown mod type: ${modName}`);
+                const candidateTag = tag || folderName || name;
+                targetDir = path.join(config.modsPath, modName, candidateTag);
+                if (!fs.existsSync(targetDir) && name) {
+                    const altDir = path.join(config.modsPath, modName, name);
+                    if (fs.existsSync(altDir)) targetDir = altDir;
+                }
             }
 
             console.log(`[IPC] delete-mod-version: received request to delete modName=${modName}, name=${name}, tag=${tag}`);
@@ -1074,7 +1214,12 @@ function registerIpcHandlers() {
             } else if (modName === 'streamline') {
                 targetDir = path.join(config.streamlineModsPath, folderName);
             } else {
-                throw new Error(`Unknown mod type: ${modName}`);
+                const candidateTag = tag || folderName || name;
+                targetDir = path.join(config.modsPath, modName, candidateTag);
+                if (!fs.existsSync(targetDir) && name) {
+                    const altDir = path.join(config.modsPath, modName, name);
+                    if (fs.existsSync(altDir)) targetDir = altDir;
+                }
             }
 
             console.log(`[IPC] open-mod-folder: opening targetDir -> ${targetDir}`);
@@ -1088,6 +1233,32 @@ function registerIpcHandlers() {
             console.error('[IPC] open-mod-folder error:', e);
             return { success: false, error: `Klasör açma hatası: ${e.message}` };
         }
+    });
+
+    // ── Manifest tabanlı modül sistemi ─────────────────────────────────────
+    const moduleManager = require('./modules/core/moduleManager');
+    moduleManager.registerIpcHandlers(ipcMain);
+
+    // ── Winget Tabanlı Araçlar Sistemi ─────────────────────────────────────
+    const toolsManager = require('./modules/tools/toolsManager');
+    ipcMain.handle('tools:get-status', async () => {
+        return await toolsManager.getToolsStatus();
+    });
+
+    ipcMain.handle('tools:install', async (event, toolId) => {
+        return await toolsManager.runWingetOperation('install', toolId, event);
+    });
+
+    ipcMain.handle('tools:uninstall', async (event, toolId) => {
+        return await toolsManager.runWingetOperation('uninstall', toolId, event);
+    });
+
+    ipcMain.handle('tools:upgrade', async (event, toolId) => {
+        return await toolsManager.runWingetOperation('upgrade', toolId, event);
+    });
+
+    ipcMain.handle('tools:launch', async (event, toolId) => {
+        return await toolsManager.launchTool(toolId);
     });
 }
 

@@ -1,15 +1,24 @@
 import { state } from '../state.js';
 import { openModal, closeModal, setManualAddCloseGuard } from './modals/base.js';
 import { showConfirmModal } from './blacklist.js';
-import { openUpdateModal } from './modals/update.js';
 import { openSettingsModal } from './modals/settings.js';
 import { showInfoModal, showLauncherWarningModal, showConfirmDialog } from './modals/info.js';
+import { renderModSelectionModal } from './modals/modSelection.js';
 import { t } from '../i18n/i18n.js';
 
 // Get elements helper to ensure they exist before use
 const getGamesContainer = () => document.getElementById('games-container');
 const getLoadingEl = () => document.getElementById('loading-games');
 const getAddGameBtn = () => document.getElementById('add-game-btn');
+
+export function hasAnyActiveMod(game) {
+    if (!game) return false;
+    if (game.hasDlssEnabler || game.hasStreamline || game.hasOptiscaler || game.hasOptiBuilder) return true;
+    if (game.installedMods && typeof game.installedMods === 'object') {
+        return Object.values(game.installedMods).some(m => m && m.installed);
+    }
+    return false;
+}
 
 export function createGameCard(game) {
     const card = document.createElement('div');
@@ -46,6 +55,20 @@ export function createGameCard(game) {
         currentBottom += 34;
     }
 
+    // Modular installed mods tags
+    if (game.installedMods && typeof game.installedMods === 'object') {
+        for (const [modId, info] of Object.entries(game.installedMods)) {
+            if (info && info.installed) {
+                const isLegacy = (modId === 'dlssenabler' || modId === 'streamline' || modId === 'optiscaler' || modId === 'optibuilder');
+                if (!isLegacy) {
+                    const verText = info.version ? ` v${info.version}` : '';
+                    modTagsHtml += `<div class="dlss-tag" style="background: rgba(59, 130, 246, 0.92); border: 1px solid rgba(59, 130, 246, 0.5); bottom: ${currentBottom}px;">${info.name || modId}${verText}</div>`;
+                    currentBottom += 34;
+                }
+            }
+        }
+    }
+
     // Upscaler tags
     let upscalerHtml = '';
     if (game.upscalers) {
@@ -68,6 +91,8 @@ export function createGameCard(game) {
     else if (game.source === 'registry') sourceLabel = t('games.sourceRegistry');
     // 'manual' already handled as default above
 
+    const hasMod = hasAnyActiveMod(game);
+
     card.innerHTML = `
         <div class="game-cover-wrapper">
             <div class="source-tag">${sourceLabel}</div>
@@ -77,8 +102,7 @@ export function createGameCard(game) {
                 <div class="game-actions-wrapper">
                     <button class="game-launch-btn" data-game="${game.name}"> ${t('games.launchGame')}</button>
                     <button class="mod-install-btn" data-game="${game.name}">${t('games.installMod')}</button>
-                    ${(game.hasDlssEnabler || game.hasStreamline || game.hasOptiscaler || game.hasOptiBuilder) ? `<button class="mod-manage-btn" data-game="${game.name}">${t('games.manageMod')}</button>` : ''}
-                    ${(game.hasDlssEnabler || game.hasOptiscaler || game.hasOptiBuilder) ? `<button class="mod-settings-btn" data-game="${game.name}">${t('games.modSettings')}</button>` : ''}
+                    ${hasMod ? `<button class="mod-manage-btn" data-game="${game.name}">${t('games.manageMod')}</button>` : ''}
                 </div>
                 <button class="remove-game-btn" data-game="${game.name}">${t('games.removeGame')}</button>
             </div>
@@ -87,82 +111,14 @@ export function createGameCard(game) {
             <button class="favorite-btn ${game.isFavorite ? 'active' : ''}" data-game="${game.name}">
                 ${game.isFavorite ? '★' : '☆'}
             </button>
+            <button class="refresh-game-btn" data-game="${game.name}" title="Oyunu Yenile">↻</button>
             <div class="game-title">${game.name}</div>
             ${upscalerHtml}
         </div>
     `;
 
-    // Bind Launch Game button
-    const launchBtn = card.querySelector('.game-launch-btn');
-    if (launchBtn) {
-        launchBtn.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            if (window.electronAPI && window.electronAPI.launchGame) {
-                try {
-                    const result = await window.electronAPI.launchGame(game);
-                    if (!result.success) {
-                        showInfoModal(t('dlss.errorTitle'), result.error || 'Oyun başlatılamadı.', true);
-                    }
-                } catch (err) {
-                    console.error("Game launch error:", err);
-                    showInfoModal(t('dlss.errorTitle'), err.message || 'Oyun başlatılırken bir hata oluştu.', true);
-                }
-            }
-        });
-    }
-
-    // Bind favorite button
-    const favoriteBtn = card.querySelector('.favorite-btn');
-    favoriteBtn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        if (window.electronAPI && window.electronAPI.toggleFavorite) {
-            const updatedGames = await window.electronAPI.toggleFavorite(game.name);
-            renderGames(updatedGames);
-        }
-    });
-
-    // Bind remove button
-    const removeBtn = card.querySelector('.remove-game-btn');
-    removeBtn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        showConfirmModal(game.name, card);
-    });
-
-    // Bind Mod Kur button
-    const modBtn = card.querySelector('.mod-install-btn');
-    modBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        openModModal(game);
-    });
-
-    // Bind Güncelle button
-    const manageBtn = card.querySelector('.mod-manage-btn');
-    if (manageBtn) {
-        manageBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            openUpdateModal(game);
-        });
-    }
-
-    // Bind Yönet (Settings) button
-    const settingsBtn = card.querySelector('.mod-settings-btn');
-    if (settingsBtn) {
-        settingsBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            console.log('[RENDERER games.js] "Modu Yönet" clicked for game:', JSON.stringify(game, null, 2));
-            if (window.electronAPI && window.electronAPI.logToMain) {
-                window.electronAPI.logToMain(`[RENDERER games.js] "Modu Yönet" clicked for game: ${game.name}`);
-            }
-            try {
-                openSettingsModal(game);
-            } catch (err) {
-                console.error('[RENDERER games.js] Error in click event openSettingsModal:', err);
-                if (window.electronAPI && window.electronAPI.logToMain) {
-                    window.electronAPI.logToMain(`[RENDERER games.js] Error in click event openSettingsModal: ${err.stack || err.message}`);
-                }
-            }
-        });
-    }
+    // Bind events using shared helper
+    bindGameEvents(card, game);
 
     // Add verified compatibility badge if developer-supported or DLSS Enabler supported
     const normKey = game.name
@@ -250,17 +206,417 @@ export function createGameCard(game) {
     return card;
 }
 
+function bindGameEvents(el, game) {
+    const launchBtn = el.querySelector('.game-launch-btn');
+    if (launchBtn) {
+        launchBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (window.electronAPI && window.electronAPI.launchGame) {
+                try {
+                    const result = await window.electronAPI.launchGame(game);
+                    if (!result.success) {
+                        showInfoModal(t('dlss.errorTitle'), result.error || 'Oyun başlatılamadı.', true);
+                    }
+                } catch (err) {
+                    console.error("Game launch error:", err);
+                    showInfoModal(t('dlss.errorTitle'), err.message || 'Oyun başlatılırken bir hata oluştu.', true);
+                }
+            }
+        });
+    }
+
+    const favoriteBtn = el.querySelector('.favorite-btn');
+    if (favoriteBtn) {
+        favoriteBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            if (window.electronAPI && window.electronAPI.toggleFavorite) {
+                const updatedGames = await window.electronAPI.toggleFavorite(game.name);
+                renderGames(updatedGames);
+            }
+        });
+    }
+
+    const removeBtn = el.querySelector('.remove-game-btn');
+    if (removeBtn) {
+        removeBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            showConfirmModal(game.name, el);
+        });
+    }
+
+    const modBtn = el.querySelector('.mod-install-btn');
+    if (modBtn) {
+        modBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openModModal(game);
+        });
+    }
+
+    const manageBtn = el.querySelector('.mod-manage-btn');
+    if (manageBtn) {
+        manageBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            try {
+                openSettingsModal(game);
+            } catch (err) {
+                console.error('[RENDERER games.js] Error in click event openSettingsModal:', err);
+            }
+        });
+    }
+
+    const refreshBtn = el.querySelector('.refresh-game-btn');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            await refreshGame(game);
+        });
+    }
+
+    const settingsBtn = el.querySelector('.mod-settings-btn');
+    if (settingsBtn) {
+        settingsBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            try {
+                openSettingsModal(game);
+            } catch (err) {
+                console.error('[RENDERER games.js] Error in click event openSettingsModal:', err);
+            }
+        });
+    }
+}
+
+export function createGameListItem(game) {
+    const row = document.createElement('div');
+    row.className = 'game-list-row';
+    row.title = game.exePath || '';
+
+    let coverHtml = '';
+    if (game.cover) {
+        coverHtml = `<img src="${game.cover}" alt="${game.name}" class="game-list-icon-img">`;
+    } else {
+        coverHtml = `<div style="font-size: 18px;">🎮</div>`;
+    }
+
+    let sourceLabel = t('games.sourceManual');
+    if (game.source === 'steam') sourceLabel = 'Steam';
+    else if (game.source === 'epic') sourceLabel = 'Epic Games';
+    else if (game.source === 'gog') sourceLabel = 'GOG';
+    else if (game.source === 'ea') sourceLabel = 'EA Play';
+    else if (game.source === 'ubisoft') sourceLabel = 'Ubisoft';
+    else if (game.source === 'rockstar') sourceLabel = 'Rockstar';
+    else if (game.source === 'xbox') sourceLabel = 'Xbox';
+    else if (game.source === 'registry') sourceLabel = t('games.sourceRegistry');
+
+    // Build Compact Monochromatic Mod Chips for Mod/Optimizasyon Sütunu
+    const modChips = [];
+    if (game.hasDlssEnabler) {
+        const ver = game.dlssEnablerVersion ? ` v${game.dlssEnablerVersion}` : '';
+        modChips.push({ label: `DLSS Enabler${ver}` });
+    }
+    if (game.hasOptiBuilder) {
+        const ver = game.optiBuilderVersion ? ` ${game.optiBuilderVersion}` : '';
+        modChips.push({ label: `OptiBuilder${ver}` });
+    } else if (game.hasOptiscaler) {
+        const ver = game.optiscalerVersion ? ` ${game.optiscalerVersion}` : '';
+        modChips.push({ label: `OptiScaler${ver}` });
+    }
+    if (game.hasStreamline) {
+        const ver = game.streamlineVersion ? ` v${game.streamlineVersion}` : '';
+        modChips.push({ label: `Streamline${ver}` });
+    }
+
+    // Add modular installed mods
+    if (game.installedMods && typeof game.installedMods === 'object') {
+        for (const [modId, info] of Object.entries(game.installedMods)) {
+            if (info && info.installed) {
+                const isLegacy = (modId === 'dlssenabler' || modId === 'streamline' || modId === 'optiscaler' || modId === 'optibuilder');
+                if (!isLegacy) {
+                    const ver = info.version ? ` v${info.version}` : '';
+                    modChips.push({ label: `${info.name || modId}${ver}` });
+                }
+            }
+        }
+    }
+
+    let modColHtml = '';
+    if (modChips.length === 0) {
+        modColHtml = `<span style="color: var(--text-secondary); opacity: 0.5;">–</span>`;
+    } else if (modChips.length <= 4) {
+        modColHtml = `<div class="compact-mod-row">` + 
+            modChips.map(c => `<span class="compact-chip">${c.label}</span>`).join('') +
+            `</div>`;
+    } else {
+        const visibleChips = modChips.slice(0, 3);
+        const hiddenChips = modChips.slice(3);
+        const hiddenTooltip = hiddenChips.map(c => c.label).join(', ');
+        modColHtml = `<div class="compact-mod-row">` + 
+            visibleChips.map(c => `<span class="compact-chip">${c.label}</span>`).join('') +
+            `<span class="compact-chip compact-chip-more" data-tooltip="${hiddenTooltip}">+${hiddenChips.length}</span>` +
+            `</div>`;
+    }
+
+    let upscalerHtml = '';
+    if (game.upscalers) {
+        if (game.upscalers.dlss) upscalerHtml += '<span class="utag utag-dlss">DLSS</span>';
+        if (game.upscalers.xess) upscalerHtml += '<span class="utag utag-xess">XeSS</span>';
+        if (game.upscalers.fsr) upscalerHtml += '<span class="utag utag-fsr">FSR</span>';
+    }
+
+    let versionText = game.version || game.dlssEnablerVersion || game.optiBuilderVersion || game.optiscalerVersion || game.streamlineVersion || '-';
+    if (versionText !== '-' && !versionText.startsWith('v')) {
+        versionText = `v${versionText}`;
+    }
+
+    const hasAnyMod = hasAnyActiveMod(game);
+
+    const launchTooltip = t('games.launchGame') || 'Oyunu Başlat';
+    const installTooltip = t('games.installMod') || 'Mod Kur';
+    const manageTooltip = t('games.manageMod') || 'Modu Yönet';
+    const removeTooltip = t('games.removeGame') || 'Oyunu Kaldır';
+
+    row.innerHTML = `
+        <div class="game-list-icon-cell">${coverHtml}</div>
+        <div class="game-list-title-cell" title="${game.name}">${game.name}</div>
+        <div class="game-list-platform-cell"><span class="platform-text-badge">${sourceLabel}</span></div>
+        <div class="game-list-version-cell">${versionText}</div>
+        <div class="game-list-mods-cell">${modColHtml}</div>
+        <div class="game-list-tech-cell">${upscalerHtml}</div>
+        <div class="list-actions-group">
+            <button class="icon-action-btn launch-btn game-launch-btn btn-play" data-game="${game.name}" data-tooltip="${launchTooltip}">▶</button>
+            <button class="icon-action-btn mod-install-btn btn-kur" data-game="${game.name}" data-tooltip="${installTooltip}">⚡</button>
+            ${hasAnyMod ? `<button class="icon-action-btn mod-manage-btn btn-yonet" data-game="${game.name}" data-tooltip="${manageTooltip}">🔄</button>` : ''}
+            <button class="icon-action-btn remove-btn remove-game-btn btn-sil" data-game="${game.name}" data-tooltip="${removeTooltip}">🗑️</button>
+            <div class="favorite-star-separator"></div>
+            <button class="refresh-game-btn list-refresh-btn" data-game="${game.name}" title="Oyunu Yenile">↻</button>
+            <button class="favorite-btn ${game.isFavorite ? 'active' : ''}" data-game="${game.name}" title="Favorilere Ekle/Çıkar">
+                ${game.isFavorite ? '★' : '☆'}
+            </button>
+        </div>
+    `;
+
+    bindGameEvents(row, game);
+
+    // Add green border if game is supported in DLSS Enabler or Developer list
+    const normKey = game.name
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, '')
+        .trim()
+        .replace(/\s+/g, '-');
+
+    if (window.electronAPI) {
+        const getDev = window.electronAPI.getDeveloperGames ? window.electronAPI.getDeveloperGames() : Promise.resolve({});
+        const getDlss = window.electronAPI.getDlssEnablerGames ? window.electronAPI.getDlssEnablerGames() : Promise.resolve({});
+
+        Promise.all([getDev, getDlss]).then(([devGames, dlssGamesRaw]) => {
+            const dlssGames = {};
+            if (dlssGamesRaw) {
+                for (const name of Object.keys(dlssGamesRaw)) {
+                    const normalized = name
+                        .toLowerCase()
+                        .replace(/[^a-z0-9\s]/g, '')
+                        .trim()
+                        .replace(/\s+/g, '-');
+                    dlssGames[normalized] = dlssGamesRaw[name];
+                }
+            }
+
+            const isDlssSupported = dlssGames && dlssGames[normKey];
+            const isDevSupported = devGames && devGames[normKey];
+
+            if (isDlssSupported || isDevSupported) {
+                row.classList.add('dlss-supported');
+            }
+        });
+    }
+
+    return row;
+}
+
 function openModModal(game) {
-    state.currentSelectedGame = game;
-    const modModalGameName = document.getElementById('mod-modal-game-name');
-    if (modModalGameName) modModalGameName.textContent = game.name;
-    openModal('mod-modal');
+    renderModSelectionModal(game);
+}
+
+/**
+ * DOM içerisinde belirli bir oyuna ait kartı bulur (grid veya liste modunda).
+ * CSS seçici kaçış hatalarına karşı doğrudan öznitelik ve başlık kontrolü yapar.
+ * @param {string} gameName
+ * @returns {HTMLElement|null}
+ */
+export function findGameCardElement(gameName) {
+    if (!gameName) return null;
+    const container = getGamesContainer();
+    if (!container) return null;
+
+    const cards = container.querySelectorAll('.game-cover-card, .game-list-row');
+    const targetNorm = gameName.trim().toLowerCase();
+
+    for (const card of cards) {
+        const els = card.querySelectorAll('[data-game]');
+        for (const el of els) {
+            const val = el.getAttribute('data-game');
+            if (val && (val === gameName || val.trim().toLowerCase() === targetNorm)) {
+                return card;
+            }
+        }
+        const titleEl = card.querySelector('.game-title, .game-list-title');
+        if (titleEl && titleEl.textContent.trim().toLowerCase() === targetNorm) {
+            return card;
+        }
+    }
+    return null;
+}
+
+/**
+ * Tekil yenileme sonrası gelen güncel game verisini DOM'da yerine koy.
+ * Grid modunda .game-cover-card, liste modunda .game-list-row öğesini günceller.
+ */
+export function updateExistingGameCard(game) {
+    if (!game || !game.name) return;
+    const existingCard = findGameCardElement(game.name);
+    if (!existingCard) {
+        console.warn('[RENDERER] Kart bulunamadı, güncellenemedi:', game.name);
+        return;
+    }
+
+    const isListView = state.gamesViewMode === 'list';
+    const newCard = isListView ? createGameListItem(game) : createGameCard(game);
+    existingCard.replaceWith(newCard);
+    console.log('[RENDERER] Oyun kartı başarıyla güncellendi:', game.name);
+}
+
+/**
+ * Oyun klasörü bulunamadığında kullanıcıya onay soran basit dialog.
+ * @param {string} gameName
+ * @returns {Promise<boolean>} Kullanıcı "Evet" seçtiyse true
+ */
+function showGameNotFoundDialog(gameName) {
+    return showConfirmDialog(
+        'Oyun Bulunamadı',
+        `"${gameName}" artık mevcut konumunda bulunamıyor.\nListeden kaldırılsın mı?`
+    );
+}
+
+/**
+ * Bir oyun için yenileme fonksiyonunu çalıştırır ve arayüzdeki "Oyunu Yenile" (↻) butonunu tetikler.
+ * Mod kurulduğunda veya butona tıklandığında otomatik olarak tekil taramayı yürütür.
+ * @param {Object|string} game Oyun nesnesi veya oyun adı
+ * @param {Object} [options]
+ * @param {boolean} [options.silent=false]
+ * @returns {Promise<Object|null>}
+ */
+export async function refreshGame(game, options = {}) {
+    if (!game) return null;
+    const gameName = typeof game === 'string' ? game : game.name;
+    if (!gameName) return null;
+
+    // Tam tarama devam ediyorsa uyar
+    if (state.isScanning) {
+        if (!options.silent) {
+            showInfoModal(
+                'Tarama Devam Ediyor',
+                'Oyun listesi taranırken tekil yenileme yapılamaz. Lütfen tarama tamamlandıktan sonra tekrar deneyin.',
+                true
+            );
+        }
+        return null;
+    }
+
+    // Başka bir tekil yenileme zaten sürüyorsa uyar
+    if (state.isRefreshingSingle) {
+        if (!options.silent) {
+            showInfoModal(
+                'Yenileme Devam Ediyor',
+                'Bir oyun zaten yenileniyor. Lütfen bitmesini bekleyin.',
+                true
+            );
+        }
+        return null;
+    }
+
+    const existingCard = findGameCardElement(gameName);
+    const refreshBtn = existingCard ? existingCard.querySelector('.refresh-game-btn') : null;
+
+    state.isRefreshingSingle = true;
+    if (refreshBtn) {
+        refreshBtn.classList.add('spinning');
+        refreshBtn.disabled = true;
+    }
+
+    let targetGame = typeof game === 'object' ? game : null;
+    if (!targetGame || (!targetGame.exePath && !targetGame.exe_path && !targetGame.gameRoot && !targetGame.game_root)) {
+        try {
+            const allGames = await window.electronAPI.getGames();
+            const found = allGames ? allGames.find(g => g.name.trim().toLowerCase() === gameName.trim().toLowerCase()) : null;
+            if (found) targetGame = { ...found, ...(targetGame || {}) };
+        } catch (e) {
+            console.error('[RENDERER] refreshGame getGames error:', e);
+        }
+    }
+    if (!targetGame) targetGame = { name: gameName };
+
+    try {
+        const result = await window.electronAPI.refreshSingleGame({
+            name: targetGame.name,
+            exePath: targetGame.exePath || targetGame.exe_path,
+            gameRoot: targetGame.gameRoot || targetGame.game_root,
+            source: targetGame.source,
+            launcherId: targetGame.launcherId,
+            cover: targetGame.cover
+        });
+
+        if (result && !result.exists) {
+            const confirmed = await showGameNotFoundDialog(targetGame.name);
+            if (confirmed) {
+                await window.electronAPI.removeGame(targetGame.name);
+                if (existingCard) existingCard.remove();
+            }
+        } else if (result && result.error === 'scan_in_progress') {
+            if (!options.silent) {
+                showInfoModal(
+                    'Tarama Devam Ediyor',
+                    'Arka planda bir tarama devam etmekte. Lütfen daha sonra tekrar deneyin.',
+                    true
+                );
+            }
+        }
+
+        // Kartın en son taranan verilerle anında güncellendiğinden emin ol
+        try {
+            const allGames = await window.electronAPI.getGames();
+            const updated = allGames ? allGames.find(g => g.name.trim().toLowerCase() === gameName.trim().toLowerCase()) : null;
+            if (updated) {
+                updateExistingGameCard(updated);
+            }
+        } catch (e) {}
+
+        return result;
+    } catch (err) {
+        console.error('[RENDERER] refreshGame error:', err);
+        return null;
+    } finally {
+        state.isRefreshingSingle = false;
+        if (refreshBtn) {
+            refreshBtn.classList.remove('spinning');
+            refreshBtn.disabled = false;
+        }
+    }
+}
+
+if (typeof window !== 'undefined') {
+    window.refreshGame = refreshGame;
 }
 
 export function renderGames(games) {
     const container = getGamesContainer();
     const loading = getLoadingEl();
     if (!container) return;
+
+    const isListView = state.gamesViewMode === 'list';
+    if (isListView) {
+        container.className = 'games-list-view';
+    } else {
+        container.className = 'games-grid';
+    }
 
     const searchInput = document.getElementById('game-search-input');
     const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
@@ -274,34 +630,42 @@ export function renderGames(games) {
 
     container.innerHTML = '';
 
-    // FIX 1b: Check the loading element's real computed visibility, not just inline style
-    // to prevent the "no games" message from flashing during scan startup
     const loadingVisible = loading && (loading.style.display !== 'none') && loading.style.display !== '';
     if (filteredGames.length === 0 && !loadingVisible) {
         if (query) {
-            container.innerHTML = `<p style="color: var(--text-secondary); text-align: center; grid-column: 1 / -1;">${t('games.noGamesSearch')}</p>`;
+            container.innerHTML = `<p style="color: var(--text-secondary); text-align: center; grid-column: 1 / -1; padding: 20px;">${t('games.noGamesSearch')}</p>`;
         } else {
-            container.innerHTML = `<p style="color: var(--text-secondary); text-align: center; grid-column: 1 / -1;">${t('games.noGames')}</p>`;
+            container.innerHTML = `<p style="color: var(--text-secondary); text-align: center; grid-column: 1 / -1; padding: 20px;">${t('games.noGames')}</p>`;
         }
         return;
     }
 
-    // Apply sorting: Favorites ALWAYS first, then secondary sort
+    if (isListView) {
+        const headerRow = document.createElement('div');
+        headerRow.className = 'games-list-header';
+        headerRow.innerHTML = `
+            <div>${t('games.colIcon') || 'İkon'}</div>
+            <div>${t('games.colName') || 'Oyun Adı'}</div>
+            <div>${t('games.colPlatform') || 'Platform'}</div>
+            <div>${t('games.colVersion') || 'Versiyon'}</div>
+            <div>${t('games.colMods') || 'Mod / Optimizasyon'}</div>
+            <div>${t('games.colTech') || 'Teknolojiler'}</div>
+            <div style="text-align: right; padding-right: 8px;">${t('games.colActions') || 'Eylemler'}</div>
+        `;
+        container.appendChild(headerRow);
+    }
+
     const sortedGames = [...filteredGames].sort((a, b) => {
-        // Priority 1: Favorites
         if (a.isFavorite && !b.isFavorite) return -1;
         if (!a.isFavorite && b.isFavorite) return 1;
 
-        // Priority 2: Selected sort method
         if (state.gameSortMethod === 'source') {
             const sourceA = (a.source || '').toLowerCase();
             const sourceB = (b.source || '').toLowerCase();
             if (sourceA < sourceB) return -1;
             if (sourceA > sourceB) return 1;
-            // FIX 1d: Tie-break with name sort when source is equal
         }
 
-        // Default / tie-break: Name sort
         const nameA = (a.name || '').toLowerCase();
         const nameB = (b.name || '').toLowerCase();
         if (nameA < nameB) return -1;
@@ -310,7 +674,11 @@ export function renderGames(games) {
     });
 
     sortedGames.forEach(game => {
-        container.appendChild(createGameCard(game));
+        if (isListView) {
+            container.appendChild(createGameListItem(game));
+        } else {
+            container.appendChild(createGameCard(game));
+        }
     });
 }
 
@@ -400,6 +768,40 @@ export async function initGames() {
 }
 
 export function initGamesListeners() {
+    // Handle View Switcher (Grid vs List View)
+    const gridBtn = document.getElementById('view-mode-grid-btn');
+    const listBtn = document.getElementById('view-mode-list-btn');
+
+    const updateViewSwitchUI = () => {
+        const currentMode = state.gamesViewMode;
+        if (gridBtn) gridBtn.classList.toggle('active', currentMode === 'grid');
+        if (listBtn) listBtn.classList.toggle('active', currentMode === 'list');
+    };
+
+    updateViewSwitchUI();
+
+    if (gridBtn) {
+        gridBtn.addEventListener('click', async () => {
+            if (state.gamesViewMode === 'grid') return;
+            state.gamesViewMode = 'grid';
+            localStorage.setItem('vmanager_games_view_mode', 'grid');
+            updateViewSwitchUI();
+            const games = await window.electronAPI.getGames();
+            renderGames(games || []);
+        });
+    }
+
+    if (listBtn) {
+        listBtn.addEventListener('click', async () => {
+            if (state.gamesViewMode === 'list') return;
+            state.gamesViewMode = 'list';
+            localStorage.setItem('vmanager_games_view_mode', 'list');
+            updateViewSwitchUI();
+            const games = await window.electronAPI.getGames();
+            renderGames(games || []);
+        });
+    }
+
     // Handle Refresh Games — now opens scan-settings-modal
     const refreshGamesBtn = document.getElementById('refresh-games-btn');
     if (refreshGamesBtn) {
@@ -862,19 +1264,23 @@ export function initGamesListeners() {
         const container = getGamesContainer();
         if (!container) return;
 
-        const searchInput = document.getElementById('game-search-input');
-        const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
+        // Tam tarama devam ediyorsa → kart ekle (mevcut davranış)
+        if (state.isScanning) {
+            const searchInput = document.getElementById('game-search-input');
+            const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
+            if (query && !game.name.toLowerCase().includes(query)) return;
 
-        if (query && !game.name.toLowerCase().includes(query)) {
-            return; // Don't append if it doesn't match the search query
+            const noGameMsg = container.querySelector('p');
+            if (noGameMsg) noGameMsg.remove();
+
+            // During scan, we append to avoid full re-renders,
+            // but sorting will be fixed onScanComplete
+            container.appendChild(createGameCard(game));
+            return;
         }
 
-        const noGameMsg = container.querySelector('p');
-        if (noGameMsg) noGameMsg.remove();
-
-        // During scan, we append to avoid full re-renders, 
-        // but sorting will be fixed onScanComplete
-        container.appendChild(createGameCard(game));
+        // Tekil yenileme → mevcut kartı güncelle
+        updateExistingGameCard(game);
     });
 
     window.electronAPI.onScanComplete(async () => {

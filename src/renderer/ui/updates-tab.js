@@ -42,12 +42,31 @@ export function initUpdatesTab() {
 
 // ─── Buton Listener'ları ──────────────────────────────────────────────────────
 
+let checkTimeoutTimer = null;
+
 function _setupButtonListeners() {
     document.getElementById('check-updates-btn')?.addEventListener('click', async () => {
         _setState('checking');
+        if (checkTimeoutTimer) clearTimeout(checkTimeoutTimer);
+
+        // Safety fallback timeout after 8 seconds
+        checkTimeoutTimer = setTimeout(() => {
+            const statusCard = document.getElementById('update-status-card');
+            if (statusCard && statusCard.classList.contains('status-checking')) {
+                _setState('idle', null, true);
+            }
+        }, 8000);
+
         try {
-            await window.electronAPI.checkForUpdatesManual();
+            const res = await window.electronAPI.checkForUpdatesManual();
+            if (res && res.result && res.result.devMode) {
+                setTimeout(() => {
+                    if (checkTimeoutTimer) clearTimeout(checkTimeoutTimer);
+                    _setState('idle', null, true);
+                }, 1000);
+            }
         } catch (e) {
+            if (checkTimeoutTimer) clearTimeout(checkTimeoutTimer);
             _setState('error', e.message || t('updates.unknownError'));
         }
     });

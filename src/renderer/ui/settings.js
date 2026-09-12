@@ -373,7 +373,6 @@ export function initSettingsListeners() {
     const discordToggle = document.getElementById('discord-rpc-toggle');
 
     if (discordToggle) {
-        // Fetch setting and populate checkbox
         window.electronAPI.getSettings().then(settings => {
             if (settings) {
                 discordToggle.checked = !!settings.discordRpcEnabled;
@@ -382,7 +381,6 @@ export function initSettingsListeners() {
             console.error('Failed to load Discord RPC setting:', err);
         });
 
-        // Save setting instantly when toggled
         discordToggle.addEventListener('change', async () => {
             try {
                 const settings = await window.electronAPI.getSettings();
@@ -390,6 +388,28 @@ export function initSettingsListeners() {
                 await window.electronAPI.saveSettings(settings);
             } catch (err) {
                 console.error('Failed to save Discord RPC setting:', err);
+            }
+        });
+    }
+
+    // ── Window Close Behavior Settings ──────────────────────────────────────
+    const closeBehaviorSelect = document.getElementById('close-behavior-select');
+    if (closeBehaviorSelect) {
+        window.electronAPI.getSettings().then(settings => {
+            if (settings && settings.closeBehavior) {
+                closeBehaviorSelect.value = settings.closeBehavior;
+            }
+        }).catch(err => {
+            console.error('Failed to load closeBehavior setting:', err);
+        });
+
+        closeBehaviorSelect.addEventListener('change', async () => {
+            try {
+                const settings = await window.electronAPI.getSettings();
+                settings.closeBehavior = closeBehaviorSelect.value;
+                await window.electronAPI.saveSettings(settings);
+            } catch (err) {
+                console.error('Failed to save closeBehavior setting:', err);
             }
         });
     }

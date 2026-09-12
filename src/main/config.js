@@ -189,10 +189,39 @@ function getGamePaths(gameName, gameExePath) {
     // Priority 2: scan + developer-games.json
     const devGames = getDeveloperGames();
     if (devGames[normKey] && devGames[normKey].exe_relative_path) {
-        const relPath = devGames[normKey].exe_relative_path.replace(/\//g, path.sep);
-        const exe_path = path.join(game_root, relPath);
-        console.log(`[CONFIG] getGamePaths("${gameName}"): source=scan+dev, exe_path=${exe_path}`);
-        return { game_root, exe_path, source: 'scan+dev' };
+        const rawRelPath = devGames[normKey].exe_relative_path.replace(/\//g, path.sep);
+        const candidateExe = path.join(game_root, rawRelPath);
+
+        // 2a. Doğrudan diskte var mı?
+        if (fs.existsSync(candidateExe)) {
+            console.log(`[CONFIG] getGamePaths("${gameName}"): source=scan+dev, exe_path=${candidateExe}`);
+            return { game_root, exe_path: candidateExe, source: 'scan+dev' };
+        }
+
+        // 2b. developer-games.json'daki yol yanlışlıkla oyun ana klasör adıyla mı başlıyor? (Örn: "Nuclear Nightmare/NuclearNightmare/...")
+        const rootBaseNorm = path.basename(game_root).toLowerCase().replace(/[^a-z0-9]/g, '');
+        const relParts = devGames[normKey].exe_relative_path.split(/[\/\\]/);
+        if (relParts.length > 1) {
+            const firstPartNorm = relParts[0].toLowerCase().replace(/[^a-z0-9]/g, '');
+            if (firstPartNorm === rootBaseNorm) {
+                const strippedRel = relParts.slice(1).join(path.sep);
+                const altCandidate = path.join(game_root, strippedRel);
+                if (fs.existsSync(altCandidate)) {
+                    console.log(`[CONFIG] getGamePaths("${gameName}"): source=scan+dev (fazlalık kök klasör temizlendi), exe_path=${altCandidate}`);
+                    return { game_root, exe_path: altCandidate, source: 'scan+dev' };
+                }
+            }
+        }
+
+        // 2c. Eğer dev yolu diskte bulunamadıysa ama taranan gameExePath geçerli bir dosya ise onu koru
+        if (fs.existsSync(gameExePath) && !fs.statSync(gameExePath).isDirectory()) {
+            console.log(`[CONFIG] getGamePaths("${gameName}"): dev yolu diskte yok, taranan dosya kullanılıyor: ${gameExePath}`);
+            return { game_root, exe_path: gameExePath, source: 'scan' };
+        }
+
+        // Fallback candidate
+        console.log(`[CONFIG] getGamePaths("${gameName}"): source=scan+dev (aday), exe_path=${candidateExe}`);
+        return { game_root, exe_path: candidateExe, source: 'scan+dev' };
     }
 
     // Priority 3: scan only — use whatever the scanner found
@@ -545,11 +574,51 @@ function saveModPresets(mod, presets) {
     }
 }
 
+function getRecentGamesFile() { return path.join(app.getPath('userData'), 'recent-games.json'); }
+
+function getRecentGames() {
+    try {
+        const file = getRecentGamesFile();
+        if (fs.existsSync(file)) {
+            const data = JSON.parse(fs.readFileSync(file, 'utf-8'));
+            if (Array.isArray(data)) return data;
+        }
+    } catch (e) {
+        console.error('[CONFIG] Could not read recent-games.json:', e.message);
+    }
+    return [];
+}
+
+function addRecentGame(game) {
+    if (!game || !game.name) return [];
+    let list = getRecentGames();
+    const normKey = normalizeGameKey(game.name);
+    list = list.filter(g => normalizeGameKey(g.name || '') !== normKey);
+    list.unshift({
+        name: game.name,
+        exePath: game.exePath,
+        gameRoot: game.gameRoot,
+        source: game.source,
+        launcherId: game.launcherId,
+        cover: game.cover
+    });
+    if (list.length > 4) {
+        list = list.slice(0, 4);
+    }
+    try {
+        atomicWriteFile(getRecentGamesFile(), JSON.stringify(list, null, 2));
+    } catch (e) {
+        console.error('[CONFIG] Could not save recent-games.json:', e.message);
+    }
+    return list;
+}
+
 function getSettings() {
     const filePath = getSettingsFile();
     const defaultSettings = { 
         resolution: '1280x720',
-        discordRpcEnabled: true
+        discordRpcEnabled: true,
+        closeBehavior: 'tray'
     };
     try {
         if (fs.existsSync(filePath)) {
@@ -628,6 +697,10 @@ module.exports = {
     // Mod presets
     getModPresets,
     saveModPresets,
+
+    // Recent Games
+    getRecentGames,
+    addRecentGame,
 
     // App settings
     getSettings,

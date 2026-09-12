@@ -82,9 +82,26 @@ async function getOptiPatcherReleases() {
 }
 
 async function downloadOptiPatcherRelease(event, { tag, downloadUrl }) {
-    const tempAsiPath = path.join(app.getPath('temp'), `optipatcher_${tag.replace(/[^a-z0-9.-]/gi, '_')}.asi`);
     const targetDir = path.join(config.modsPath, 'OptiPatcher', tag);
     const targetFile = path.join(targetDir, 'OptiPatcher.asi');
+
+    const candidateFiles = [
+        targetFile,
+        path.join(config.modsPath, 'OptiPatcher', tag.replace(/^v/i, ''), 'OptiPatcher.asi'),
+        path.join(config.modsPath, 'OptiPatcher', `v${tag.replace(/^v/i, '')}`, 'OptiPatcher.asi')
+    ];
+
+    for (const cand of candidateFiles) {
+        if (fs.existsSync(cand)) {
+            console.log(`[OPTIPATCHER] Sürüm zaten indirilmiş: ${cand}`);
+            if (event && event.sender && !event.sender.isDestroyed()) {
+                event.sender.send('optipatcher-download-progress', { percent: 100 });
+            }
+            return { success: true, targetDir: path.dirname(cand), alreadyExists: true };
+        }
+    }
+
+    const tempAsiPath = path.join(app.getPath('temp'), `optipatcher_${tag.replace(/[^a-z0-9.-]/gi, '_')}.asi`);
 
     try {
         if (!downloadUrl) throw new Error("İndirme linki bulunamadı.");

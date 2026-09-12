@@ -15,7 +15,6 @@ import { initOptiBuilderWizardListeners } from './ui/modals/optiBuilderWizard.js
 import { initOptiPatcherListeners } from './ui/modals/optiPatcher.js';
 import { initFsr4Listeners } from './ui/modals/fsr4.js';
 import { initStreamlineListeners } from './ui/modals/streamline.js';
-import { initUpdateListeners } from './ui/modals/update.js';
 import { initModSelectionListeners } from './ui/modals/modSelection.js';
 import { initSettingsListeners as initModalSettingsListeners } from './ui/modals/settings.js';
 import { initModsTab } from './ui/mods-tab.js';
@@ -25,6 +24,8 @@ import { initFreeGames } from './ui/free-games.js';
 import { initSystemInfo } from './ui/system-info.js';
 import { initI18n, setLanguage, getCurrentLang, applyTranslations, t } from './i18n/i18n.js';
 import { initCacheWarningModal } from './ui/modals/cacheHelpers.js';
+import { initManifestBuilder } from './ui/manifest-builder.js';
+import { initTools } from './ui/tools.js';
 
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -66,7 +67,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     initOptiPatcherListeners();
     initFsr4Listeners();
     initStreamlineListeners();
-    initUpdateListeners();
     initModSelectionListeners();
     initModalSettingsListeners();
     initModsTab();
@@ -80,6 +80,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     initUpdatesTab();
     initFreeGames();
     initSystemInfo();
+    initManifestBuilder();
+    initTools();
 
     // Close attempt listener (during compression)
     if (window.electronAPI && window.electronAPI.onShowCloseWarning) {

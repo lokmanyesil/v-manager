@@ -774,9 +774,31 @@ async function getStreamlineReleases(forceRefresh = false) {
 }
 
 async function downloadStreamlineRelease(event, { tag, downloadUrl }) {
+    const targetDir = path.join(config.streamlineModsPath, tag);
+
+    const candidateDirs = [
+        targetDir,
+        path.join(config.streamlineModsPath, tag.replace(/^v/i, '')),
+        path.join(config.streamlineModsPath, `v${tag.replace(/^v/i, '')}`)
+    ];
+
+    for (const cand of candidateDirs) {
+        if (fs.existsSync(cand)) {
+            try {
+                const files = fs.readdirSync(cand).filter(f => !f.startsWith('download_') && !f.startsWith('extract_'));
+                if (files.length > 0) {
+                    console.log(`[STREAMLINE] Sürüm zaten indirilmiş: ${cand}`);
+                    if (event && event.sender && !event.sender.isDestroyed()) {
+                        event.sender.send('streamline-download-progress', { percent: 100 });
+                    }
+                    return { success: true, targetDir: cand, alreadyExists: true };
+                }
+            } catch (e) {}
+        }
+    }
+
     const tempZipPath = path.join(app.getPath('temp'), `streamline_${tag.replace(/[^a-z0-9.-]/gi, '_')}.zip`);
     const tempExtractDir = path.join(app.getPath('temp'), `streamline_extract_${tag.replace(/[^a-z0-9.-]/gi, '_')}`);
-    const targetDir = path.join(config.streamlineModsPath, tag);
 
     const MAX_RETRIES = 3;
     const TIMEOUT_MS = 120000; // 2 dakika timeout

@@ -659,6 +659,28 @@ async function downloadDlssEnablerRelease(event, { name, downloadUrl }) {
 
     const targetDir = path.join(config.modsPath, 'dlssenabler', name);
 
+    // Zaten indirilmiş mi kontrol et
+    const candidateDirs = [
+        targetDir,
+        path.join(config.modsPath, 'dlssenabler', name.replace(/^v/i, '')),
+        path.join(config.modsPath, 'dlssenabler', `v${name.replace(/^v/i, '')}`)
+    ];
+
+    for (const cand of candidateDirs) {
+        if (fs.existsSync(cand)) {
+            try {
+                const files = fs.readdirSync(cand).filter(f => !f.startsWith('download_') && !f.startsWith('extract_'));
+                if (files.length > 0) {
+                    console.log(`[DLSS ENABLER] Sürüm zaten indirilmiş: ${cand}`);
+                    if (event && event.sender && !event.sender.isDestroyed()) {
+                        event.sender.send('dlss-enabler-download-progress', { percent: 100 });
+                    }
+                    return { success: true, targetDir: cand, alreadyExists: true };
+                }
+            } catch (e) {}
+        }
+    }
+
     const is7z = downloadUrl.toLowerCase().endsWith('.7z');
     const ext = is7z ? '.7z' : '.zip';
     const tempZipPath = path.join(app.getPath('temp'), `dlssenabler_${name.replace(/[^a-z0-9.-]/gi, '_')}${ext}`);

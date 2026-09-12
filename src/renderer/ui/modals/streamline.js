@@ -97,7 +97,6 @@ export async function runStreamlineInstall(game, version, targetDir, overwriteBa
         
         if (result.success) {
             closeModal('streamline-modal');
-            closeModal('update-modal');
             showInfoModal(t('streamline.successTitle'), `🎉 Streamline (${version}) ${t('streamline.installSuccess')}`);
             if (result.games) {
                 renderGames(result.games);

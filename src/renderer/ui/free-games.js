@@ -21,7 +21,10 @@ export function initFreeGames() {
     const refreshBtn = document.getElementById('refresh-free-games-btn');
     if (refreshBtn) {
         refreshBtn.addEventListener('click', () => {
-            loadFreeGames(true);
+            refreshBtn.classList.add('rotating');
+            loadFreeGames(true).finally(() => {
+                setTimeout(() => refreshBtn.classList.remove('rotating'), 600);
+            });
         });
     }
 

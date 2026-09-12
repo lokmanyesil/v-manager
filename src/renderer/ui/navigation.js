@@ -45,6 +45,13 @@ export function initNavigation() {
             }
         }
     });
+
+    // System tray navigation listener
+    if (window.electronAPI && window.electronAPI.onNavigateTab) {
+        window.electronAPI.onNavigateTab((tabId) => {
+            switchTab(tabId);
+        });
+    }
 }
 export function switchTab(tabId) {
     window.electronAPI.logToMain(`Navigation: switchTab called -> ${tabId}`);

@@ -177,6 +177,34 @@ async function runDlssWizard(event, { game, version, dllName, downloadUrl, devel
         return str;
     };
 
+    const gameObj = (typeof game === 'object' && game !== null) ? game : { name: (typeof game === 'string' ? game : 'Game') };
+    const gameName = gameObj.name || '';
+    version = version || gameObj.dlssEnablerVersion || 'latest';
+    dllName = dllName || 'version.dll';
+
+    // EXE resolution fallback if missing, not found, or is a directory
+    if (!exePath || !fs.existsSync(exePath) || (fs.existsSync(exePath) && fs.statSync(exePath).isDirectory())) {
+        const candidateInput = exePath || gameObj.exePath || gameObj.exe_path;
+        const paths = config.getGamePaths(gameName, candidateInput);
+        if (paths && paths.exe_path && fs.existsSync(paths.exe_path) && !fs.statSync(paths.exe_path).isDirectory()) {
+            exePath = paths.exe_path;
+        } else if (paths && paths.game_root && fs.existsSync(paths.game_root)) {
+            const foundExes = utils.scanFolderForExes(paths.game_root);
+            if (foundExes && foundExes.length > 0) {
+                const normName = gameName.toLowerCase().replace(/[^a-z0-9]/g, '');
+                const match = foundExes.find(e => path.basename(e, '.exe').toLowerCase().replace(/[^a-z0-9]/g, '') === normName) || foundExes[0];
+                if (match) exePath = match;
+            }
+        }
+    }
+
+    if (exePath && fs.existsSync(exePath) && fs.statSync(exePath).isDirectory()) {
+        const foundExes = utils.scanFolderForExes(exePath);
+        if (foundExes && foundExes.length > 0) {
+            exePath = foundExes[0];
+        }
+    }
+
     // 1. Log Dosyası Hazırlığı
     const logsDir = path.join(app.getPath('userData'), 'logs', 'dlss-enabler-wizard');
     if (!fs.existsSync(logsDir)) {
@@ -188,12 +216,12 @@ async function runDlssWizard(event, { game, version, dllName, downloadUrl, devel
     const logPath = path.join(logsDir, `dlss-wizard-${timestamp}.log`);
 
     logMsg(event, logPath, 'info', t('start'));
-    logMsg(event, logPath, 'info', t('game', { name: game.name }));
-    logMsg(event, logPath, 'info', t('exe', { path: exePath }));
-    logMsg(event, logPath, 'info', t('platform', { platform: game.source || 'Unknown' }));
+    logMsg(event, logPath, 'info', t('game', { name: gameName || 'Game' }));
+    logMsg(event, logPath, 'info', t('exe', { path: exePath || 'None' }));
+    logMsg(event, logPath, 'info', t('platform', { platform: gameObj.source || 'Unknown' }));
     logMsg(event, logPath, 'info', t('version', { version }));
 
-    if (!exePath || !fs.existsSync(exePath)) {
+    if (!exePath || !fs.existsSync(exePath) || fs.statSync(exePath).isDirectory()) {
         logMsg(event, logPath, 'err', t('errExeNotFound'), '[ERR_001]');
         return { success: false, error: 'EXE_NOT_FOUND', code: 'ERR_001' };
     }

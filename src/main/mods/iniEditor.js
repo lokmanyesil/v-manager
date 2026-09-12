@@ -388,5 +388,6 @@ function writeIni(filePath, newData) {
 module.exports = {
     findIniPath,
     readIni,
-    writeIni
+    writeIni,
+    findFileRecursive
 };

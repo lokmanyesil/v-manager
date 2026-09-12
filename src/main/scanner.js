@@ -208,7 +208,9 @@ async function detectUpscalers(gamePath) {
                         const descLow = desc.toLowerCase();
                         if (descLow.includes('optiscaler')) {
                             const ver = await utils.getFileVersion(filePath);
-                            const isOptiBuilder = ver && ver.trim().startsWith('0.10');
+                            const cleanVer = (ver || '').trim().replace(/^v/i, '');
+                            const majorVer = parseInt(cleanVer.split('.')[0], 10);
+                            const isOptiBuilder = ver && (cleanVer.startsWith('0.10') || (!isNaN(majorVer) && majorVer >= 10));
                             if (isOptiBuilder) {
                                 result.optibuilder = true;
                                 result.optiBuilderPath = current.path;

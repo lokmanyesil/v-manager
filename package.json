@@ -59,12 +59,12 @@
   "author": "vuenxx",
   "license": "UNLICENSED",
   "devDependencies": {
-    "electron": "^29.1.0",
-    "electron-builder": "^24.13.3"
+    "electron": "^44.2.0",
+    "electron-builder": "^26.15.3"
   },
   "dependencies": {
     "7zip-bin": "~5.2.0",
-    "adm-zip": "^0.5.17",
+    "adm-zip": "^0.6.0",
     "bytenode": "^1.5.7",
     "discord-rpc": "^4.0.1",
     "electron-log": "^5.1.2",

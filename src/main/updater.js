@@ -109,6 +109,10 @@ function initAutoUpdater() {
 async function checkForUpdates() {
     if (!app.isPackaged) {
         log.info('[UPDATER] Development — manuel kontrol simüle edildi.');
+        sendToRenderer('update-checking');
+        setTimeout(() => {
+            sendToRenderer('update-not-available', { version: app.getVersion() });
+        }, 1000);
         return { updateAvailable: false, devMode: true };
     }
 
@@ -116,6 +120,7 @@ async function checkForUpdates() {
         return await autoUpdater.checkForUpdates();
     } catch (err) {
         log.error('[UPDATER] Manuel kontrol hatası:', err.message);
+        sendToRenderer('update-error', err.message);
         throw err;
     }
 }

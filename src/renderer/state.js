@@ -8,7 +8,10 @@ export const state = {
     isDownloadingOptiScaler: false,
     isDownloadingStreamline: false,
     isScanning: false,
+    isRefreshingSingle: false, // Tekil oyun yenileme kilidi
+
     currentBlacklistPage: 1,
     gameSortMethod: 'name', // 'name', 'source'
-    activePlatformFilter: null
+    activePlatformFilter: null,
+    gamesViewMode: localStorage.getItem('vmanager_games_view_mode') || 'grid' // 'grid' or 'list'
 };

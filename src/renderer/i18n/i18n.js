@@ -99,6 +99,11 @@ export function applyTranslations() {
         const key = el.getAttribute('data-i18n-title');
         el.title = t(key);
     });
+    // tooltip
+    document.querySelectorAll('[data-i18n-tooltip]').forEach(el => {
+        const key = el.getAttribute('data-i18n-tooltip');
+        el.setAttribute('data-tooltip', t(key));
+    });
     // Update language select dropdown value
     const langSelect = document.getElementById('lang-select');
     if (langSelect) {

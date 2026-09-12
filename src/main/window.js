@@ -22,8 +22,8 @@ function createWindow() {
     const mainWindow = new BrowserWindow({
         width,
         height,
-        minWidth: 800,
-        minHeight: 600,
+        minWidth: 1280,
+        minHeight: 720,
         autoHideMenuBar: true,
         icon: path.join(app.getAppPath(), 'program_logo.ico'),
         webPreferences: {
@@ -42,6 +42,19 @@ function createWindow() {
         if (ipc.isCompressionRunning && ipc.isCompressionRunning()) {
             e.preventDefault();
             mainWindow.webContents.send('show-close-warning');
+            return;
+        }
+
+        if (!app.isQuitting) {
+            const currentSettings = config.getSettings();
+            const behavior = (currentSettings && currentSettings.closeBehavior) ? currentSettings.closeBehavior : 'tray';
+            if (behavior === 'exit') {
+                app.isQuitting = true;
+                app.quit();
+            } else {
+                e.preventDefault();
+                mainWindow.hide();
+            }
         }
     });
 

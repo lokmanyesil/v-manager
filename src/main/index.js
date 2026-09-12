@@ -89,6 +89,8 @@ function createActivationWindow() {
     });
 }
 
+const trayManager = require('./tray');
+
 // ── Normal app boot ───────────────────────────────────────────────────────────
 
 function bootApp() {
@@ -96,10 +98,15 @@ function bootApp() {
     config.loadExistingGames();
     config.loadBlacklist();
 
+    // Manifest tabanlı modül sistemi başlat
+    const moduleManager = require('./modules/core/moduleManager');
+    moduleManager.init();
+
     // C-06: Guard against duplicate IPC handler registration (e.g. macOS 'activate' re-triggers)
     ipc.registerIpcHandlers();
 
-    windowManager.createWindow();
+    const mainWindow = windowManager.createWindow();
+    trayManager.createTray(mainWindow);
     initAutoUpdater();
 
     try {
@@ -116,6 +123,10 @@ function bootApp() {
 }
 
 // ── App lifecycle ─────────────────────────────────────────────────────────────
+
+app.on('before-quit', () => {
+    app.isQuitting = true;
+});
 
 app.on('window-all-closed', function () {
     if (process.platform !== 'darwin') {

@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     addManualGame: () => ipcRenderer.invoke('add-manual-game'),
     saveManualGame: (data) => ipcRenderer.invoke('save-manual-game', data),
     toggleFavorite: (gameName) => ipcRenderer.invoke('toggle-favorite', gameName),
+    refreshSingleGame: (gameData) => ipcRenderer.invoke('refresh-single-game', gameData),
+
     // M-28: openExternal removed — use openExternalLink IPC channel for security
     
     // Logging
@@ -136,6 +138,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     startUpdateDownload: () => ipcRenderer.send('start-update-download'),
     quitAndInstall: () => ipcRenderer.send('quit-and-install'),
     onShowCloseWarning: (cb) => { ipcRenderer.removeAllListeners('show-close-warning'); ipcRenderer.on('show-close-warning', () => cb()); },
+    onNavigateTab: (cb) => { ipcRenderer.removeAllListeners('navigate-tab'); ipcRenderer.on('navigate-tab', (_event, tabId) => cb(tabId)); },
 
     // Updater Event Listeners
     onUpdateChecking:         (cb) => ipcRenderer.on('update-checking',          ()        => cb()),
@@ -184,6 +187,82 @@ contextBridge.exposeInMainWorld('electronAPI', {
         ipcRenderer.removeAllListeners('discord-rpc-error');
         ipcRenderer.on('discord-rpc-error', (_event, errorMsg) => callback(errorMsg));
     },
-    removeDiscordRpcErrorListeners: () => ipcRenderer.removeAllListeners('discord-rpc-error')
+    removeDiscordRpcErrorListeners: () => ipcRenderer.removeAllListeners('discord-rpc-error'),
+
+    // ── Manifest Tabanlı Modül Sistemi IPCs ─────────────────────────────────
+    moduleList: () => ipcRenderer.invoke('module-list'),
+    moduleGetInfo: (moduleId) => ipcRenderer.invoke('module-get-info', typeof moduleId === 'object' ? moduleId : { moduleId }),
+    moduleGetActiveForGame: (game) => ipcRenderer.invoke('module-get-active-for-game', game),
+    moduleReadConfig: (opts) => ipcRenderer.invoke('module-read-config', opts),
+    moduleApplyConfigChanges: (opts) => ipcRenderer.invoke('module-apply-config-changes', opts),
+    moduleSaveManifest: (manifest) => ipcRenderer.invoke('module-save-manifest', manifest),
+    moduleDeleteCustomManifest: (moduleId) => ipcRenderer.invoke('module-delete-custom-manifest', typeof moduleId === 'object' ? moduleId : { moduleId }),
+    moduleValidateManifest: (manifest) => ipcRenderer.invoke('module-validate-manifest', manifest),
+    moduleReload: () => ipcRenderer.invoke('module-reload'),
+    moduleInstall: (dataOrModuleId, gameName, exePath, tag, options) => {
+        if (typeof dataOrModuleId === 'object' && dataOrModuleId !== null) {
+            return ipcRenderer.invoke('module-install', dataOrModuleId);
+        }
+        return ipcRenderer.invoke('module-install', {
+            moduleId: dataOrModuleId,
+            gameName,
+            exePath,
+            tag,
+            options
+        });
+    },
+    moduleUninstall: (dataOrModuleId, gameName, exePath) => {
+        if (typeof dataOrModuleId === 'object' && dataOrModuleId !== null) {
+            return ipcRenderer.invoke('module-uninstall', dataOrModuleId);
+        }
+        return ipcRenderer.invoke('module-uninstall', {
+            moduleId: dataOrModuleId,
+            gameName,
+            exePath
+        });
+    },
+    moduleGetReleases: (moduleIdOrOpts, forceRefresh = false) => {
+        if (typeof moduleIdOrOpts === 'object' && moduleIdOrOpts !== null) {
+            return ipcRenderer.invoke('module-get-releases', moduleIdOrOpts);
+        }
+        return ipcRenderer.invoke('module-get-releases', {
+            moduleId: moduleIdOrOpts,
+            forceRefresh
+        });
+    },
+    moduleDownloadRelease: (opts) => ipcRenderer.invoke('module-download-release', opts),
+    onModuleDownloadProgress: (callback) => {
+        ipcRenderer.removeAllListeners('module-download-progress');
+        ipcRenderer.on('module-download-progress', (_event, data) => callback(data));
+    },
+    removeModuleDownloadProgressListeners: () => ipcRenderer.removeAllListeners('module-download-progress'),
+    onModuleProgress: (callback) => {
+        ipcRenderer.removeAllListeners('module-progress');
+        ipcRenderer.on('module-progress', (_event, data) => callback(data));
+    },
+    moduleRunWizard: (moduleIdOrOpts, gameName, exePath, options) => {
+        if (typeof moduleIdOrOpts === 'object' && moduleIdOrOpts !== null) {
+            return ipcRenderer.invoke('module-wizard-run', moduleIdOrOpts);
+        }
+        return ipcRenderer.invoke('module-wizard-run', {
+            moduleId: moduleIdOrOpts,
+            gameName,
+            exePath,
+            options
+        });
+    },
+    moduleAbortWizard: () => ipcRenderer.invoke('module-wizard-abort'),
+    removeModuleProgressListeners: () => ipcRenderer.removeAllListeners('module-progress'),
+
+    // ── Winget Tabanlı Araçlar API ───────────────────────────────────────────
+    toolsGetStatus: () => ipcRenderer.invoke('tools:get-status'),
+    toolsInstall: (toolId) => ipcRenderer.invoke('tools:install', toolId),
+    toolsUninstall: (toolId) => ipcRenderer.invoke('tools:uninstall', toolId),
+    toolsUpgrade: (toolId) => ipcRenderer.invoke('tools:upgrade', toolId),
+    toolsLaunch: (toolId) => ipcRenderer.invoke('tools:launch', toolId),
+    onToolsOperationLog: (callback) => {
+        ipcRenderer.on('tools-operation-log', (_event, data) => callback(data));
+    },
+    removeToolsOperationLogListeners: () => ipcRenderer.removeAllListeners('tools-operation-log')
 });
 
